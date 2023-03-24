@@ -1,0 +1,28 @@
+Package: ggpicrust2
+Type: Package
+Title: Make 'PICRUSt2' Output Analysis and Visualization Easier
+Version: 1.4.8
+Authors@R: c(
+    person("Chen", "Yang", email = "cafferychen7850@gmail.com", role = c("aut", "cre")),
+    person("Liangliang", "Zhang", email = "lxz716@case.edu ", role = "aut"))
+Description: Provides a convenient way to analyze and visualize 'PICRUSt2' output with pre-defined plots and functions. Allows for generating statistical plots about microbiome functional predictions and offers customization options. Features a one-click option for creating publication-level plots, saving time and effort in producing professional-grade figures. Streamlines the 'PICRUSt2' analysis and visualization process. For more details, see Yang et al. (2023) <arXiv:2303.10388>.
+BugReports: https://github.com/cafferychen777/ggpicrust2/pulls
+URL: https://github.com/cafferychen777/ggpicrust2
+License: MIT + file LICENSE
+Encoding: UTF-8
+RoxygenNote: 7.2.3
+Imports: ALDEx2, aplot, DESeq2, dplyr, edgeR, funrar, GGally, ggplot2,
+        grid, lefser, limma, Maaslin2, metagenomeSeq, MicrobiomeStat,
+        readr, stats, SummarizedExperiment, tibble, tidyr,
+Depends: R (>= 3.5.0)
+Suggests: covr, testthat (>= 3.0.0), cowplot, Biobase, devtools,
+        KEGGREST, ComplexHeatmap, ggprism, ggforce, patchwork,
+        ggplotify, BiocGenerics, BiocManager, magrittr, utils
+Config/testthat/edition: 3
+NeedsCompilation: no
+Packaged: 2023-03-24 11:41:58 UTC; apple
+Author: Chen Yang [aut, cre],
+  Liangliang Zhang [aut]
+Maintainer: Chen Yang <cafferychen7850@gmail.com>
+Repository: CRAN
+Date/Publication: 2023-03-24 16:40:02 UTC
