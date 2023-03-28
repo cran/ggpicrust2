@@ -1,12 +1,12 @@
-4ba8914e0ed4d0aab19f926e6bc2daf8 *DESCRIPTION
+f52d21541afe5f1d42e1cdf6337459b7 *DESCRIPTION
 5dce28efb3d2ce85c7c2f01638979dba *LICENSE
 1e4fe538bd2c1d1a2e08d9742c4cefb7 *NAMESPACE
-1e06f90136fb79e1342351468df52ed7 *NEWS.md
+ae6f89e69992091c347937fc269d5d99 *NEWS.md
 c2011edea2b4bd31c57430c0d1f44e6d *R/ggpicrust2.R
 0612fc47619b3a10f66bb283d1dbd339 *R/ko2kegg_abundance.R
 09304f814b9029d7d7e4200fe28ef355 *R/pathway_annotation.R
 eff4c2a484a7c22fb24a76875211c67d *R/pathway_daa.R
-acf2c552c668b05f3ff644f778222ff2 *R/pathway_errorbar.R
+19d407d7f52182308c9297c1a01e90e4 *R/pathway_errorbar.R
 a0034fcf6b3ddf304527a5213c66312e *R/pathway_heatmap.R
 af42226edde1fb78fee85d32bd634d18 *R/pathway_pca.R
 603aab1153229f0c000d7613935d7505 *R/sysdata.rda

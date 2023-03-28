@@ -1,7 +1,7 @@
 Package: ggpicrust2
 Type: Package
 Title: Make 'PICRUSt2' Output Analysis and Visualization Easier
-Version: 1.4.8
+Version: 1.4.9
 Authors@R: c(
     person("Chen", "Yang", email = "cafferychen7850@gmail.com", role = c("aut", "cre")),
     person("Liangliang", "Zhang", email = "lxz716@case.edu ", role = "aut"))
@@ -13,16 +13,16 @@ Encoding: UTF-8
 RoxygenNote: 7.2.3
 Imports: ALDEx2, aplot, DESeq2, dplyr, edgeR, funrar, GGally, ggplot2,
         grid, lefser, limma, Maaslin2, metagenomeSeq, MicrobiomeStat,
-        readr, stats, SummarizedExperiment, tibble, tidyr,
+        readr, stats, SummarizedExperiment, tibble, tidyr, ggprism
 Depends: R (>= 3.5.0)
 Suggests: covr, testthat (>= 3.0.0), cowplot, Biobase, devtools,
-        KEGGREST, ComplexHeatmap, ggprism, ggforce, patchwork,
-        ggplotify, BiocGenerics, BiocManager, magrittr, utils
+        KEGGREST, ComplexHeatmap, ggforce, patchwork, ggplotify,
+        BiocGenerics, BiocManager, magrittr, utils
 Config/testthat/edition: 3
 NeedsCompilation: no
-Packaged: 2023-03-24 11:41:58 UTC; apple
+Packaged: 2023-03-28 03:03:17 UTC; apple
 Author: Chen Yang [aut, cre],
   Liangliang Zhang [aut]
 Maintainer: Chen Yang <cafferychen7850@gmail.com>
 Repository: CRAN
-Date/Publication: 2023-03-24 16:40:02 UTC
+Date/Publication: 2023-03-28 12:40:02 UTC
