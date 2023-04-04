@@ -9,7 +9,7 @@
 #' @param p.adjust A character, the method to adjust p-values
 #' @param order A character to control the order of the main plot rows
 #' @param p_values_bar A character to control if the main plot has the p_values bar
-#' @param x_lab A character to control the x-axis label name
+#' @param x_lab A character to control the x-axis label name, you can choose from "feature","pathway_name" and "description"
 #' @param select A vector consisting of pathway names to be selected
 #' @param reference A character, a reference group level for several DA methods
 #' @param colors A vector consisting of colors number
@@ -30,7 +30,11 @@
 #'                       metadata = metadata,
 #'                       group = "your_group_column",
 #'                       pathway = "KO",
-#'                       daa_method = "ALDEx2")
+#'                       daa_method = "LinDA",
+#'                       ko_to_kegg = TRUE,
+#'                       order = "pathway_class",
+#'                       p_values_bar = TRUE,
+#'                       x_lab = "pathway_name")
 #'
 #' # Access the plot and results dataframe for the first DA method
 #' example_plot <- results[[1]]$plot
@@ -45,11 +49,11 @@ ggpicrust2 <- function(file,
                        p.adjust = "BH",
                        order = "group",
                        p_values_bar = TRUE,
-                       x_lab = "pathway_name",
+                       x_lab = NULL,
                        select = NULL,
                        reference = NULL,
                        colors = NULL) {
-  # 创建一个空list
+  #create an empty list
   plot_result_list <- list()
 
   switch(ko_to_kegg,
@@ -68,46 +72,27 @@ ggpicrust2 <- function(file,
            if (sum(as.numeric(daa_results_df$p_adjust <= 0.05)) == 0){
              stop("There are no statistically significant biomarkers")
            }
-           if (x_lab == "pathway_name") {
              daa_results_df  <-
                pathway_annotation(daa_results_df = daa_results_df, ko_to_kegg = TRUE)
-           }
            j <- 1
            for (i in unique(daa_results_df$method)) {
              daa_sub_method_results_df <-
                daa_results_df[daa_results_df[, "method"] == i,]
-             daa_sub_method_results_df_sorted <- data.frame()
-             if (select == "NULL"){
-               daa_sub_method_results_df_sorted <- daa_sub_method_results_df
-             }else if (select == "Top 10"){
-               # 对 daa_sub_method_results_df 按照 p_adjust 进行排序，自小向大
-               daa_sub_method_results_df_sorted <- daa_sub_method_results_df[order(daa_sub_method_results_df$p_adjust),]
-               # 保留 p_adjust 最小的十条记录
-               daa_sub_method_results_df_sorted <- daa_sub_method_results_df_sorted[1:10,]
-             }else if (select == "Top 20"){
-               # 对 daa_sub_method_results_df 按照 p_adjust 进行排序，自小向大
-               daa_sub_method_results_df_sorted <- daa_sub_method_results_df[order(daa_sub_method_results_df$p_adjust),]
-               # 保留 p_adjust 最小的二十条记录
-               daa_sub_method_results_df_sorted <- daa_sub_method_results_df_sorted[1:20,]
-             }else if (select == "Top 30"){
-               # 对 daa_sub_method_results_df 按照 p_adjust 进行排序，自小向大
-               daa_sub_method_results_df_sorted <- daa_sub_method_results_df[order(daa_sub_method_results_df$p_adjust),]
-               # 保留 p_adjust 最小的三十条记录
-               daa_sub_method_results_df_sorted <- daa_sub_method_results_df_sorted[1:30,]
-             }
              combination_bar_plot <-
                pathway_errorbar(
                  abundance = abundance,
-                 daa_results_df = daa_sub_method_results_df_sorted,
+                 daa_results_df = daa_sub_method_results_df,
                  Group = metadata[, group],
                  ko_to_kegg = ko_to_kegg,
-                 order = "pathway_class",
+                 p_value_bar = p_values_bar,
+                 order = order,
                  colors = colors,
+                 select = select,
                  x_lab = x_lab
                )
-             # 创建一个子list，包含一个combination_bar_plot和对应的daa_results_df子集
+             # Create a sublist containing a combination_bar_plot and the corresponding subset of daa_results_df
              sub_list <- list(plot = combination_bar_plot, results = daa_sub_method_results_df)
-             # 将子list添加到主list中
+             # Add sublists to the main list
              plot_result_list[[j]] <- sub_list
              j <- j + 1
            }
@@ -121,8 +106,8 @@ ggpicrust2 <- function(file,
              escape_double = FALSE,
              trim_ws = TRUE
            )
-           abundance <-
-             tibble::column_to_rownames(abundance, var = "function")
+           rownames(abundance) <- abundance[,1]
+           abundance <- abundance[,-1]
            daa_results_df <- pathway_daa(
              abundance = abundance,
              metadata = metadata,
@@ -148,13 +133,15 @@ ggpicrust2 <- function(file,
                  daa_sub_method_results_df,
                  metadata[, group],
                  ko_to_kegg = ko_to_kegg,
+                 p_value_bar = p_values_bar,
                  order = order,
                  colors = colors,
+                 select = select,
                  x_lab = x_lab
                )
-             # 创建一个子list
+             # Create a sublist
              sub_list <- list(plot = combination_bar_plot, results = daa_sub_method_results_df)
-             # 将子list添加到主list中
+             # Add sublists to the main list
              plot_result_list[[j]] <- sub_list
              j <- j + 1
            }
