@@ -22,6 +22,17 @@ version](https://www.r-pkg.org/badges/version/ggpicrust2)](https://CRAN.R-projec
 [![License:
 MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/license/mit/)
 
+## News
+
+Update alert! 🚨 ggpicrust2 Ver1.6.3 is now available. To get the latest
+version, simply use
+
+``` r
+devtools::install_github('cafferychen777/ggpicrust2')
+```
+
+Don’t miss out on the major bug fixes and improvements. 😀
+
 ## Table of Contents
 
 - [Citation](#citation)
@@ -55,6 +66,8 @@ author={Chen Yang and Aaron Burberry and Jiahao Mai and Xuan Cao and
 Liangliang Zhang}, year={2023}, eprint={2303.10388},
 archivePrefix={arXiv}, primaryClass={stat.AP} }
 
+<!-- ResearchGate preprint link: [Click here](https://www.researchgate.net/publication/369380349_ggpicrust2_an_R_package_for_PICRUSt2_predicted_functional_profile_analysis_and_visualization) -->
+
 ## Installation
 
 You can install the stable version of *ggpicrust2* from CRAN with:
@@ -76,8 +89,7 @@ devtools::install_github("cafferychen777/ggpicrust2")
 
 ## Stay Updated
 
-Follow me on Twitter for the latest *ggpicrust2* updates:
-[![](https://img.shields.io/twitter/follow/CafferyYang?style=social)](https://twitter.com/CafferyYang)
+<!-- Follow me on Twitter for the latest *ggpicrust2* updates: [![](https://img.shields.io/twitter/follow/CafferyYang?style=social)](https://twitter.com/CafferyYang) -->
 
 ## Workflow
 
@@ -483,8 +495,6 @@ print(pca_plot)
 
 ## Share
 
-[![Twitter](https://img.shields.io/twitter/url?url=https%253A%252F%252Fgithub.com%252Fcafferychen777%252Fggpicrust2&style=social)](https://twitter.com/intent/tweet?url=https%3A%2F%2Fgithub.com%2Fcafferychen777%2Fggpicrust2&text=Check%20out%20this%20awesome%20package%20on%20GitHub%21)
-
 [![Facebook](https://img.shields.io/badge/Share_on-Facebook-1877F2?logo=facebook&style=social)](https://www.facebook.com/sharer/sharer.php?u=https%3A%2F%2Fgithub.com%2Fcafferychen777%2Fggpicrust2&quote=Check%20out%20this%20awesome%20package%20on%20GitHub%21)
 
 [![LinkedIn](https://img.shields.io/badge/Share_on-LinkedIn-0077B5?logo=linkedin&style=social)](https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Fgithub.com%2Fcafferychen777%2Fggpicrust2&title=Check%20out%20this%20awesome%20package%20on%20GitHub%21)
@@ -544,13 +554,22 @@ When encountering the following error:
 If you are in China, make sure your computer network can bypass the
 firewall.
 
-### Issue 3: Bad Request (HTTP 400)
+### Issue 4: Bad Request (HTTP 400)
 
 When encountering the following error:
 
     Error in .getUrl(url, .flatFileParser) : Bad Request (HTTP 400).
 
 Please restart R session.
+
+### Issue 5: Error in grid.Call(C_textBounds, as.graphicsAnnot(xlabel),x$x, x$y, :
+
+When encountering the following error:
+
+    Error in grid.Call(C_textBounds, as.graphicsAnnot(xlabel),x$x, x$y, :
+
+Please having some required fonts installed. You can refer to this
+[thread](https://stackoverflow.com/questions/71362738/r-error-in-grid-callc-textbounds-as-graphicsannotxlabel-xx-xy-polygo).
 
 ## Author’s other projects
 

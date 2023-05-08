@@ -109,7 +109,7 @@
 #'   x_lab = "description"
 #' )
 #' }
-utils::globalVariables(c("group", "name", "value", "feature", "negative_log10_p", "group_nonsense", "nonsense", "pathway_class", "p_adjust", "log_2_fold_change", "transform_sample_counts"))
+utils::globalVariables(c("group", "name", "value", "feature", "negative_log10_p", "group_nonsense", "nonsense", "pathway_class", "p_adjust", "log_2_fold_change", "transform_sample_counts", "column_to_rownames"))
 pathway_errorbar <-
   function(abundance,
            daa_results_df,
@@ -311,10 +311,11 @@ pathway_errorbar <-
       ) + ggplot2::coord_cartesian(clip = "off")
 
     if (ko_to_kegg == TRUE) {
-      pathway_class_group <-
+      pathway_class_group_mat <-
         daa_results_filtered_sub_df$pathway_class %>%
         table() %>%
-        data.frame()
+        data.frame() %>% column_to_rownames(".")
+      pathway_class_group <- data.frame(.= unique(daa_results_filtered_sub_df$pathway_class),Freq = pathway_class_group_mat[unique(daa_results_filtered_sub_df$pathway_class),])
       start <-
         c(1, rev(pathway_class_group$Freq)[1:(length(pathway_class_group$Freq) - 1)]) %>%
         cumsum()
@@ -479,8 +480,15 @@ pathway_errorbar <-
           bar_errorbar + p_values_bar + p_annotation + patchwork::plot_layout(ncol = 3, widths = c(2.3, 0.7, 0.3))
       }
     }else{
-      combination_bar_plot <-
-        bar_errorbar + p_annotation + patchwork::plot_layout(ncol = 2, widths = c(2.5,  0.2))
+      if (ko_to_kegg == TRUE) {
+        combination_bar_plot <-
+          pathway_class_annotation + bar_errorbar + p_annotation + patchwork::plot_layout(ncol = 3, widths =
+                                                                                                           c(1, 1.2, 0.1))
+      }
+      else{
+        combination_bar_plot <-
+          bar_errorbar + p_annotation + patchwork::plot_layout(ncol = 2, widths = c(2.5,  0.2))
+      }
     }
     return(combination_bar_plot)
   }
