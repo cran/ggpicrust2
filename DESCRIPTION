@@ -1,7 +1,7 @@
 Package: ggpicrust2
 Type: Package
 Title: Make 'PICRUSt2' Output Analysis and Visualization Easier
-Version: 1.6.3
+Version: 1.6.5
 Authors@R: c(
     person("Chen", "Yang", email = "cafferychen7850@gmail.com", role = c("aut", "cre")),
     person("Liangliang", "Zhang", email = "lxz716@case.edu ", role = "aut"))
@@ -21,9 +21,9 @@ Suggests: covr, testthat (>= 3.0.0), cowplot, Biobase, devtools,
         BiocManager, magrittr, utils
 Config/testthat/edition: 3
 NeedsCompilation: no
-Packaged: 2023-05-08 01:06:04 UTC; apple
+Packaged: 2023-05-13 00:28:52 UTC; apple
 Author: Chen Yang [aut, cre],
   Liangliang Zhang [aut]
 Maintainer: Chen Yang <cafferychen7850@gmail.com>
 Repository: CRAN
-Date/Publication: 2023-05-08 03:40:03 UTC
+Date/Publication: 2023-05-13 07:10:02 UTC
