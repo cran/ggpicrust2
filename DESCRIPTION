@@ -1,29 +1,31 @@
 Package: ggpicrust2
 Type: Package
 Title: Make 'PICRUSt2' Output Analysis and Visualization Easier
-Version: 1.6.5
+Version: 1.7.0
 Authors@R: c(
     person("Chen", "Yang", email = "cafferychen7850@gmail.com", role = c("aut", "cre")),
     person("Liangliang", "Zhang", email = "lxz716@case.edu ", role = "aut"))
 Description: Provides a convenient way to analyze and visualize 'PICRUSt2' output with pre-defined plots and functions. Allows for generating statistical plots about microbiome functional predictions and offers customization options. Features a one-click option for creating publication-level plots, saving time and effort in producing professional-grade figures. Streamlines the 'PICRUSt2' analysis and visualization process. For more details, see Yang et al. (2023) <arXiv:2303.10388>.
-BugReports: https://github.com/cafferychen777/ggpicrust2/pulls
+BugReports: https://github.com/cafferychen777/ggpicrust2/issues
 URL: https://github.com/cafferychen777/ggpicrust2
 License: MIT + file LICENSE
 Encoding: UTF-8
+LazyData: true
 RoxygenNote: 7.2.3
 Imports: ALDEx2, aplot, DESeq2, dplyr, edgeR, GGally, ggplot2, grid,
         lefser, limma, Maaslin2, metagenomeSeq, MicrobiomeStat, readr,
         stats, SummarizedExperiment, tibble, tidyr, ggprism, phyloseq,
-        patchwork
+        patchwork, circlize
 Depends: R (>= 3.5.0)
 Suggests: covr, testthat (>= 3.0.0), cowplot, Biobase, devtools,
         KEGGREST, ComplexHeatmap, ggforce, ggplotify, BiocGenerics,
-        BiocManager, magrittr, utils
+        BiocManager, magrittr, utils, knitr, rmarkdown
 Config/testthat/edition: 3
+VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2023-05-13 00:28:52 UTC; apple
+Packaged: 2023-05-31 07:10:26 UTC; apple
 Author: Chen Yang [aut, cre],
   Liangliang Zhang [aut]
 Maintainer: Chen Yang <cafferychen7850@gmail.com>
 Repository: CRAN
-Date/Publication: 2023-05-13 07:10:02 UTC
+Date/Publication: 2023-05-31 08:00:19 UTC

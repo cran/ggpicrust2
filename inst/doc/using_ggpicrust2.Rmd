@@ -1,91 +1,63 @@
+---
+title: "Using ggpicrust2"
+author: "Caffery Yang"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Using ggpicrust2}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
 
-<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
 
 # ggpicrust2 Documentation
 
-*ggpicrust2* is a comprehensive package designed to provide a seamless
-and intuitive solution for analyzing and interpreting the results of
-PICRUSt2 functional prediction. It offers a wide range of features,
-including pathway name/description annotations, advanced differential
-abundance (DA) methods, and visualization of DA results.
+*ggpicrust2* is a comprehensive package designed to provide a seamless and intuitive solution for analyzing and interpreting the results of PICRUSt2 functional prediction. It offers a wide range of features, including pathway name/description annotations, advanced differential abundance (DA) methods, and visualization of DA results. 
 
-One of the newest additions to *ggpicrust2* is the capability to compare
-the consistency and inconsistency across different DA methods applied to
-the same dataset. This feature allows users to assess the agreement and
-discrepancy between various methods when it comes to predicting and
-sequencing the metagenome of a particular sample. It provides valuable
-insights into the consistency of results obtained from different
-approaches and helps users evaluate the robustness of their findings.
+One of the newest additions to *ggpicrust2* is the capability to compare the consistency and inconsistency across different DA methods applied to the same dataset. This feature allows users to assess the agreement and discrepancy between various methods when it comes to predicting and sequencing the metagenome of a particular sample. It provides valuable insights into the consistency of results obtained from different approaches and helps users evaluate the robustness of their findings.
 
-By leveraging this functionality, researchers, data scientists, and
-bioinformaticians can gain a deeper understanding of the underlying
-biological processes and mechanisms present in their PICRUSt2 output
-data. This comparison of different methods enables them to make informed
-decisions and draw reliable conclusions based on the consistency
-evaluation of macrogenomic predictions or sequencing results for the
-same sample.
+By leveraging this functionality, researchers, data scientists, and bioinformaticians can gain a deeper understanding of the underlying biological processes and mechanisms present in their PICRUSt2 output data. This comparison of different methods enables them to make informed decisions and draw reliable conclusions based on the consistency evaluation of macrogenomic predictions or sequencing results for the same sample.
 
-If you are interested in exploring and analyzing your PICRUSt2 output
-data, *ggpicrust2* is a powerful tool that provides a comprehensive set
-of features, including the ability to assess the consistency and
-evaluate the performance of different methods applied to the same
-dataset.
+If you are interested in exploring and analyzing your PICRUSt2 output data, *ggpicrust2* is a powerful tool that provides a comprehensive set of features, including the ability to assess the consistency and evaluate the performance of different methods applied to the same dataset.
 
-[![CRAN
-version](https://www.r-pkg.org/badges/version/ggpicrust2)](https://CRAN.R-project.org/package=ggpicrust2)
-[![Downloads](https://cranlogs.r-pkg.org/badges/grand-total/ggpicrust2)](https://CRAN.R-project.org/package=ggpicrust2)
-[![License:
-MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/license/mit/)
-
-## News
-
-Update alert! 🚨 ggpicrust2 Ver1.7 is now available. To get the latest
-version, simply use
-
-``` r
-devtools::install_github('cafferychen777/ggpicrust2')
-```
-
-Don’t miss out on the major bug fixes and improvements. 😀
+[![CRAN version](https://www.r-pkg.org/badges/version/ggpicrust2)](https://CRAN.R-project.org/package=ggpicrust2) [![Downloads](https://cranlogs.r-pkg.org/badges/grand-total/ggpicrust2)](https://CRAN.R-project.org/package=ggpicrust2) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/license/mit/)
 
 ## Table of Contents
 
-- [Citation](#citation)
-- [Installation](#installation)
-- [Stay Updated](#stay-updated)
-- [Workflow](#workflow)
-- [Output](#output)
-- [Function Details](#function-details)
-  - [ko2kegg_abundance()](#ko2kegg_abundance)
-  - [pathway_daa()](#pathway_daa)
-  - [compare_daa_results()](#compare_daa_results)
-  - [pathway_annotation()](#pathway_annotation)
-  - [pathway_errorbar()](#pathway_errorbar)
-  - [pathway_heatmap()](#pathway_heatmap)
-  - [pathway_pca()](#pathway_pca)
-  - [compare_metagenome_results()](#compare_metagenome_results)
-- [FAQ](#faq)
-- [Author’s Other Projects](#authors-other-projects)
+-   [Citation](#citation)
+-   [Installation](#installation)
+-   [Workflow](#workflow)
+-   [Function Details](#function-details)
+    -   [ko2kegg_abundance()](#ko2kegg_abundance)
+    -   [pathway_daa()](#pathway_daa)
+    -   [compare_daa_results()](#compare_daa_results)
+    -   [pathway_annotation()](#pathway_annotation)
+    -   [pathway_errorbar()](#pathway_errorbar)
+    -   [pathway_heatmap()](#pathway_heatmap)
+    -   [pathway_pca()](#pathway_pca)
+    -   [compare_metagenome_results()](#compare_metagenome_results)
+-   [FAQ](#faq)
 
-## Citation
+## Citation {#citation}
 
-If you use *ggpicrust2* in your research, please cite the following
-paper:
+If you use *ggpicrust2* in your research, please cite the following paper:
 
-Chen Yang, Aaron Burberry, Xuan Cao, Jiahao Mai, Liangliang Zhang.
-(2023). [ggpicrust2: an R package for PICRUSt2 predicted functional
-profile analysis and visualization.](https://arxiv.org/abs/2303.10388)
-arXiv preprint arXiv:2303.10388.
+Chen Yang, Aaron Burberry, Xuan Cao, Jiahao Mai, Liangliang Zhang. (2023). [ggpicrust2: an R package for PICRUSt2 predicted functional profile analysis and visualization.](https://arxiv.org/abs/2303.10388) arXiv preprint arXiv:2303.10388.
 
-BibTeX entry: @misc{yang2023ggpicrust2, title={ggpicrust2: an R package
-for PICRUSt2 predicted functional profile analysis and visualization},
-author={Chen Yang and Aaron Burberry and Jiahao Mai and Xuan Cao and
-Liangliang Zhang}, year={2023}, eprint={2303.10388},
-archivePrefix={arXiv}, primaryClass={stat.AP} }
+BibTeX entry: @misc{yang2023ggpicrust2, title={ggpicrust2: an R package for PICRUSt2 predicted functional profile analysis and visualization}, author={Chen Yang and Aaron Burberry and Jiahao Mai and Xuan Cao and Liangliang Zhang}, year={2023}, eprint={2303.10388}, archivePrefix={arXiv}, primaryClass={stat.AP} }
 
-ResearchGate preprint link: \[Click here\]
+ResearchGate preprint link: [Click here]
 
-## Installation
+## Installation {#installation}
 
 You can install the stable version of *ggpicrust2* from CRAN with:
 
@@ -93,8 +65,7 @@ You can install the stable version of *ggpicrust2* from CRAN with:
 install.packages("ggpicrust2")
 ```
 
-To install the latest development version of *ggpicrust2* from GitHub,
-you can use:
+To install the latest development version of *ggpicrust2* from GitHub, you can use:
 
 ``` r
 # Install the devtools package if not already installed
@@ -106,42 +77,43 @@ devtools::install_github("cafferychen777/ggpicrust2")
 
 ## Dependent CRAN Packages
 
-| Package        | Description                                                                                      |
-|----------------|--------------------------------------------------------------------------------------------------|
-| aplot          | Create interactive plots                                                                         |
-| dplyr          | A fast consistent tool for working with data frame like objects both in memory and out of memory |
-| ggplot2        | An implementation of the Grammar of Graphics in R                                                |
-| grid           | A rewrite of the graphics layout capabilities of R                                               |
-| MicrobiomeStat | Statistical analysis of microbiome data                                                          |
-| readr          | Read rectangular data (csv tsv fwf) into R                                                       |
-| stats          | The R Stats Package                                                                              |
-| tibble         | Simple Data Frames                                                                               |
-| tidyr          | Easily tidy data with spread() and gather() functions                                            |
-| ggprism        | Interactive 3D plots with ‘prism’ graphics                                                       |
-| cowplot        | Streamlined Plot Theme and Plot Annotations for ‘ggplot2’                                        |
-| ggforce        | Easily add secondary axes, zooms, and image overlays to ‘ggplot2’                                |
-| ggplotify      | Convert complex plots into ‘grob’ or ‘ggplot’ objects                                            |
-| magrittr       | A Forward-Pipe Operator for R                                                                    |
-| utils          | The R Utils Package                                                                              |
+| Package        | Description                                                                                                                       |
+|----------------|-----------------------------------------------------------------------------------------------------------------------------------|
+| aplot          | Create interactive plots                                                                                                          |
+| dplyr          | A fast consistent tool for working with data frame like objects both in memory and out of memory                                  |
+| ggplot2        | An implementation of the Grammar of Graphics in R                                                                                 |
+| grid           | A rewrite of the graphics layout capabilities of R                                                                                |
+| MicrobiomeStat | Statistical analysis of microbiome data                                                                                           |
+| readr          | Read rectangular data (csv tsv fwf) into R                                                                                        |
+| stats          | The R Stats Package                                                                                                               |
+| tibble         | Simple Data Frames                                                                                                                |
+| tidyr          | Easily tidy data with spread() and gather() functions                                                                             |
+| ggprism        | Interactive 3D plots with 'prism' graphics                                                                                        |
+| cowplot        | Streamlined Plot Theme and Plot Annotations for 'ggplot2'                                                                         |
+| ggforce        | Easily add secondary axes, zooms, and image overlays to 'ggplot2'                                                                 |
+| ggplotify      | Convert complex plots into 'grob' or 'ggplot' objects                                                                             |
+| magrittr       | A Forward-Pipe Operator for R                                                                                                     |
+| utils          | The R Utils Package                                                                                                               |
 
 ## Dependent Bioconductor Packages
 
-| Package              | Description                                                             |
-|----------------------|-------------------------------------------------------------------------|
-| phyloseq             | Handling and analysis of high-throughput microbiome census data         |
-| ALDEx2               | Differential abundance analysis of taxonomic and functional features    |
-| SummarizedExperiment | SummarizedExperiment container for storing data and metadata together   |
-| Biobase              | Base functions for Bioconductor                                         |
-| devtools             | Tools to make developing R packages easier                              |
-| ComplexHeatmap       | Making Complex Heatmaps in R                                            |
-| BiocGenerics         | S4 generic functions for Bioconductor                                   |
-| BiocManager          | Access the Bioconductor Project Package Repositories                    |
-| metagenomeSeq        | Statistical analysis for sparse high-throughput sequencing              |
-| Maaslin2             | Tools for microbiome analysis                                           |
-| edgeR                | Empirical Analysis of Digital Gene Expression Data in R                 |
+| Package              | Description                                                           |
+|----------------------|-----------------------------------------------------------------------|
+| phyloseq             | Handling and analysis of high-throughput microbiome census data       |
+| ALDEx2               | Differential abundance analysis of taxonomic and functional features  |
+| SummarizedExperiment | SummarizedExperiment container for storing data and metadata together |
+| Biobase              | Base functions for Bioconductor                                       |
+| devtools             | Tools to make developing R packages easier                            |
+| ComplexHeatmap       | Making Complex Heatmaps in R                                          |
+| BiocGenerics         | S4 generic functions for Bioconductor                                 |
+| BiocManager          | Access the Bioconductor Project Package Repositories                  |
+| metagenomeSeq        | Statistical analysis for sparse high-throughput sequencing            |
+| Maaslin2             | Tools for microbiome analysis                                         |
+| edgeR                | Empirical Analysis of Digital Gene Expression Data in R               |
 | lefser               | R implementation of the LEfSE method for microbiome biomarker discovery |
-| limma                | Linear Models for Microarray and RNA-Seq Data                           |
-| KEGGREST             | R Interface to KEGG REST API                                            |
+| limma                | Linear Models for Microarray and RNA-Seq Data                         |
+| KEGGREST             | R Interface to KEGG REST API                                          |
+
 
 ``` r
 if (!requireNamespace("BiocManager", quietly = TRUE))
@@ -157,33 +129,17 @@ for (pkg in pkgs) {
 }
 ```
 
-## Stay Updated
+## Workflow {#workflow}
 
-Follow me on Twitter for the latest *ggpicrust2* updates:
-\[![](https://img.shields.io/twitter/follow/CafferyYang?style=social)\]
+The easiest way to analyze the PICRUSt2 output is using ggpicrust2() function. The main pipeline can be run with ggpicrust2() function.
 
-## Workflow
-
-The easiest way to analyze the PICRUSt2 output is using ggpicrust2()
-function. The main pipeline can be run with ggpicrust2() function.
-
-ggpicrust2() integrates ko abundance to kegg pathway abundance
-conversion, annotation of pathway, differential abundance (DA) analysis,
-part of DA results visualization. When you have trouble running
-ggpicrust2(), you can debug it by running a separate function, which
-will greatly increase the speed of your analysis and visualization.
-
-![](https://raw.githubusercontent.com/cafferychen777/ggpicrust2_paper/main/paper_figure/workflow_1.png)
-
-![](https://raw.githubusercontent.com/cafferychen777/ggpicrust2_paper/main/paper_figure/workflow_2.png)
+ggpicrust2() integrates ko abundance to kegg pathway abundance conversion, annotation of pathway, differential abundance (DA) analysis, part of DA results visualization. When you have trouble running ggpicrust2(), you can debug it by running a separate function, which will greatly increase the speed of your analysis and visualization.
 
 ### ggpicrust2()
 
-You can download the example dataset from the provided [Google Drive
-link](https://drive.google.com/drive/folders/1on4RKgm9NkaBCykMCCRvVJuEJeNVVqAF?usp=share_link)
-or use the dataset included in the package.
+You can download the example dataset from the provided [Google Drive link](https://drive.google.com/drive/folders/1on4RKgm9NkaBCykMCCRvVJuEJeNVVqAF?usp=share_link) or use the dataset included in the package.
 
-``` r
+```{r ggpicrust2(), eval = FALSE}
 # If you want to analyze the abundance of KEGG pathways instead of KO within the pathway, please set `ko_to_kegg` to TRUE.
 # KEGG pathways typically have more descriptive explanations.
 
@@ -262,7 +218,7 @@ results_file_input[[1]]$results
 
 ### If an error occurs with ggpicrust2, please use the following workflow.
 
-``` r
+```{r alternative, eval = FALSE}
 library(readr)
 library(ggpicrust2)
 library(tibble)
@@ -341,27 +297,16 @@ daa_results_list <- lapply(methods, function(method) {
 
 # Compare results across different methods
 comparison_results <- compare_daa_results(daa_results_list = daa_results_list, method_names = c("ALDEx2_Welch's t test", "ALDEx2_Wilcoxon rank test", "DESeq2", "edgeR"))
+
 ```
 
-## Output
+## function details {#function-details}
 
-The typical output of the ggpicrust2 is like this.
+### ko2kegg_abundance() {#ko2kegg_abundance}
 
-![](https://raw.iqiq.io/cafferychen777/ggpicrust2_paper/main/paper_figure/figure1.jpg)
+KEGG Orthology(KO) is a classification system developed by the Kyoto Encyclopedia of Genes and Genomes (KEGG) data-base(Kanehisa et al., 2022). It uses a hierarchical structure to classify enzymes based on the reactions they catalyze. To better understand pathways' role in different groups and classify the pathways, the KO abundance table needs to be converted to KEGG pathway abundance. But PICRUSt2 removes the function from PICRUSt. ko2kegg_abundance() can help convert the table.
 
-## function details
-
-### ko2kegg_abundance()
-
-KEGG Orthology(KO) is a classification system developed by the Kyoto
-Encyclopedia of Genes and Genomes (KEGG) data-base(Kanehisa et al.,
-2022). It uses a hierarchical structure to classify enzymes based on the
-reactions they catalyze. To better understand pathways’ role in
-different groups and classify the pathways, the KO abundance table needs
-to be converted to KEGG pathway abundance. But PICRUSt2 removes the
-function from PICRUSt. ko2kegg_abundance() can help convert the table.
-
-``` r
+```{r ko2kegg_abundance sample,echo = TRUE,eval=FALSE}
 # Sample usage of the ko2kegg_abundance function
 
 library(ggpicrust2)
@@ -376,32 +321,14 @@ kegg_abundance <- ko2kegg_abundance(file = ko_abundance_file)
 kegg_abundance <- ko2kegg_abundance(data = ko_abundance)
 
 # The resulting kegg_abundance data frame can now be used for further analysis and visualization.
+
 ```
 
-### pathway_daa()
+### pathway_daa()  {#pathway_daa}
 
-Differential abundance(DA) analysis plays a major role in PICRUSt2
-downstream analysis. pathway_daa() integrates almost all DA methods
-applicable to the predicted functional profile which there excludes
-ANCOM and ANCOMBC. It includes
-[ALDEx2](https://bioconductor.riken.jp/packages/3.9/bioc/html/ALDEx2.html)(Fernandes
-et al., 2013),
-[DESeq2](https://bioconductor.org/packages/release/bioc/html/DESeq2.html)(Love
-et al., 2014),
-[Maaslin2](https://www.bioconductor.org/packages/release/bioc/html/Maaslin2.html)(Mallick
-et al., 2021),
-[LinDA](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-022-02655-5)(Zhou
-et al., 2022),
-[edgeR](https://bioconductor.org/packages/release/bioc/html/edgeR.html)(Robinson
-et al., 2010) , [limma
-voom](https://ucdavis-bioinformatics-training.github.io/2018-June-RNA-Seq-Workshop/thursday/DE.html)(Ritchie
-et al., 2015),
-[metagenomeSeq](https://www.bioconductor.org/packages/release/bioc/html/metagenomeSeq.html#:~:text=metagenomeSeq%20is%20designed%20to%20address,the%20testing%20of%20feature%20correlations.)(Paulson
-et al., 2013),
-[Lefser](http://bioconductor.org/packages/release/bioc/html/lefser.html)(Segata
-et al., 2011).
+Differential abundance(DA) analysis plays a major role in PICRUSt2 downstream analysis. pathway_daa() integrates almost all DA methods applicable to the predicted functional profile which there excludes ANCOM and ANCOMBC. It includes [ALDEx2](https://bioconductor.riken.jp/packages/3.9/bioc/html/ALDEx2.html)(Fernandes et al., 2013), [DESeq2](https://bioconductor.org/packages/release/bioc/html/DESeq2.html)(Love et al., 2014), [Maaslin2](https://www.bioconductor.org/packages/release/bioc/html/Maaslin2.html)(Mallick et al., 2021), [LinDA](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-022-02655-5)(Zhou et al., 2022), [edgeR](https://bioconductor.org/packages/release/bioc/html/edgeR.html)(Robinson et al., 2010) , [limma voom](https://ucdavis-bioinformatics-training.github.io/2018-June-RNA-Seq-Workshop/thursday/DE.html)(Ritchie et al., 2015), [metagenomeSeq](https://www.bioconductor.org/packages/release/bioc/html/metagenomeSeq.html#:~:text=metagenomeSeq%20is%20designed%20to%20address,the%20testing%20of%20feature%20correlations.)(Paulson et al., 2013), [Lefser](http://bioconductor.org/packages/release/bioc/html/lefser.html)(Segata et al., 2011).
 
-``` r
+```{r pathway_daa sample,echo = TRUE,eval=FALSE}
 # The abundance table is recommended to be a data.frame rather than a tibble.
 # The abundance table should have feature names or pathway names as row names, and sample names as column names.
 # You can use the output of ko2kegg_abundance
@@ -424,9 +351,9 @@ data("metadata")
 metacyc_daa_results_df <- pathway_daa(abundance = metacyc_abundance %>% column_to_rownames("pathway"), metadata = metadata, group = "Environment", daa_method = "LinDA", select = NULL, p.adjust = "BH", reference = NULL)
 ```
 
-### compare_daa_results()
+### compare_daa_results() & {#compare_daa_results}
 
-``` r
+```{r compare_daa_results sample,echo = TRUE,eval=FALSE}
 library(ggpicrust2)
 library(tidyverse)
 data("metacyc_abundance")
@@ -443,12 +370,11 @@ method_names <- c("ALDEx2_Welch's t test","ALDEx2_Wilcoxon rank test","DESeq2", 
 comparison_results <- compare_daa_results(daa_results_list = daa_results_list, method_names = method_names)
 ```
 
-### pathway_annotation()
+### pathway_annotation() {#pathway_annotation}
 
-**If you are in China and you are using kegg pathway annotation, Please
-make sure your internet can break through the firewall.**
+**If you are in China and you are using kegg pathway annotation, Please make sure your internet can break through the firewall.**
 
-``` r
+```{r pathway_annotation sample,echo = TRUE,eval=FALSE}
 
 # Make sure to check if the features in `daa_results_df` correspond to the selected pathway
 
@@ -468,9 +394,9 @@ metacyc_daa_results_df <- pathway_daa(abundance = metacyc_abundance %>% column_t
 metacyc_daa_annotated_results_df <- pathway_annotation(pathway = "MetaCyc", daa_results_df = metacyc_daa_results_df, ko_to_kegg = FALSE)
 ```
 
-### pathway_errorbar()
+### pathway_errorbar() {#pathway_errorbar}
 
-``` r
+```{r pathway_errorbar sample,echo = TRUE,eval=FALSE}
 data("ko_abundance")
 data("metadata")
 kegg_abundance <- ko2kegg_abundance(data = ko_abundance) # Or use data(kegg_abundance)
@@ -504,16 +430,11 @@ p <- pathway_errorbar(abundance = metacyc_abundance %>% column_to_rownames("path
            x_lab = "description")
 ```
 
-### pathway_heatmap()
-
-In this section, we will demonstrate how to create a pathway heatmap
-using the `pathway_heatmap` function in the ggpicrust2 package. This
-function visualizes the relative abundance of pathways in different
-samples.
+### pathway_heatmap() {#pathway_heatmap}
 
 Use the fake dataset
 
-``` r
+```{r  ,echo = TRUE,eval=FALSE}
 # Create example functional pathway abundance data
 abundance_example <- matrix(rnorm(30), nrow = 10, ncol = 3)
 rownames(abundance_example) <- paste0("Sample", 1:10)
@@ -529,25 +450,18 @@ pathway_heatmap(t(abundance_example), metadata_example, "group")
 ```
 
 Use the real dataset
-
-``` r
+```{r  ,echo = TRUE,eval=FALSE}
 data("metacyc_abundance")
 data("metadata")
 metacyc_daa_results_df <- pathway_daa(metacyc_abundance %>% column_to_rownames("pathway"), metadata, "Environment", daa_method = "LinDA")
 feature_with_p_0.05 <- metacyc_daa_results_df %>% filter(p_adjust < 0.05) 
 pathway_heatmap(abundance = metacyc_abundance %>% filter(pathway %in% feature_with_p_0.05$feature) %>% column_to_rownames("pathway"), metadata = metadata, group = "Environment")
 ```
-
-### pathway_pca()
-
-In this section, we will demonstrate how to perform Principal Component
-Analysis (PCA) on functional pathway abundance data and create
-visualizations of the PCA results using the `pathway_pca` function in
-the ggpicrust2 package.
+### pathway_pca() {#pathway_pca}
 
 Use the fake dataset
 
-``` r
+```{r ,echo = TRUE,eval=FALSE}
 # Create example functional pathway abundance data
 abundance_example <- matrix(rnorm(30), nrow = 3, ncol = 10)
 colnames(abundance_example) <- paste0("Sample", 1:10)
@@ -561,17 +475,16 @@ pathway_pca(abundance = abundance_example, metadata = metadata_example, "group")
 ```
 
 Use the real dataset
-
-``` r
+```{r ,echo = TRUE,eval=FALSE}
 # Create example functional pathway abundance data
 data("metacyc_abundance")
 data("metadata")
 pathway_pca(metacyc_abundance %>% column_to_rownames("pathway"), metadata, "Environment")
 ```
 
-### compare_metagenome_results
+### compare_metagenome_results {#compare_metagenome_results}
 
-``` r
+```{r compare_metagenome_results sample,echo = TRUE,eval=FALSE}
 set.seed(123)
 # First metagenome
 metagenome1 <- abs(matrix(rnorm(1000), nrow = 100, ncol = 10))
@@ -593,17 +506,7 @@ print(results$correlation$cor_matrix)
 print(results$correlation$p_matrix)
 ```
 
-## Share
-
-\[![Twitter](https://twitter.com/intent/tweet?url=https%3A%2F%2Fgithub.com%2Fcafferychen777%2Fggpicrust2&text=Check%20out%20this%20awesome%20package%20on%20GitHub)
-
-[![Facebook](https://img.shields.io/badge/Share_on-Facebook-1877F2?logo=facebook&style=social)](https://www.facebook.com/sharer/sharer.php?u=https%3A%2F%2Fgithub.com%2Fcafferychen777%2Fggpicrust2&quote=Check%20out%20this%20awesome%20package%20on%20GitHub%21)
-
-[![LinkedIn](https://img.shields.io/badge/Share_on-LinkedIn-0077B5?logo=linkedin&style=social)](https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Fgithub.com%2Fcafferychen777%2Fggpicrust2&title=Check%20out%20this%20awesome%20package%20on%20GitHub%21)
-
-[![Reddit](https://img.shields.io/badge/Share_on-Reddit-FF4500?logo=reddit&style=social)](https://www.reddit.com/submit?url=https%3A%2F%2Fgithub.com%2Fcafferychen777%2Fggpicrust2&title=Check%20out%20this%20awesome%20package%20on%20GitHub%21)
-
-## FAQ
+## FAQ {#faq}
 
 ### Issue 1: pathway_errorbar error
 
@@ -624,9 +527,11 @@ pathway_errorbar(abundance = abundance,
 
 You may encounter an error:
 
-    Error in `ggplot_add()`:
-    ! Can't add `e2` to a <ggplot> object.
-    Run `rlang::last_trace()` to see where the error occurred.
+```         
+Error in `ggplot_add()`:
+! Can't add `e2` to a <ggplot> object.
+Run `rlang::last_trace()` to see where the error occurred.
+```
 
 Make sure you have the `patchwork` package loaded:
 
@@ -638,8 +543,10 @@ library(patchwork)
 
 You may encounter an error with `guide_train.prism_offset_minor`:
 
-    Error in guide_train.prism_offset_minor(guide, panel_params[[aesthetic]]) : 
-      No minor breaks exist, guide_prism_offset_minor needs minor breaks to work
+```         
+Error in guide_train.prism_offset_minor(guide, panel_params[[aesthetic]]) : 
+  No minor breaks exist, guide_prism_offset_minor needs minor breaks to work
+```
 
 Ensure that the `ggprism` package is loaded:
 
@@ -651,16 +558,19 @@ library(ggprism)
 
 When encountering the following error:
 
-    SSL peer certificate or SSH remote key was not OK: [rest.kegg.jp] SSL certificate problem: certificate has expired
+```         
+SSL peer certificate or SSH remote key was not OK: [rest.kegg.jp] SSL certificate problem: certificate has expired
+```
 
-If you are in China, make sure your computer network can bypass the
-firewall.
+If you are in China, make sure your computer network can bypass the firewall.
 
 ### Issue 4: Bad Request (HTTP 400)
 
 When encountering the following error:
 
-    Error in .getUrl(url, .flatFileParser) : Bad Request (HTTP 400).
+```         
+Error in .getUrl(url, .flatFileParser) : Bad Request (HTTP 400).
+```
 
 Please restart R session.
 
@@ -668,109 +578,80 @@ Please restart R session.
 
 When encountering the following error:
 
-    Error in grid.Call(C_textBounds, as.graphicsAnnot(xlabel),x$x, x$y, :
+```         
+Error in grid.Call(C_textBounds, as.graphicsAnnot(xlabel),x$x, x$y, :
+```
 
-Please having some required fonts installed. You can refer to this
-[thread](https://stackoverflow.com/questions/71362738/r-error-in-grid-callc-textbounds-as-graphicsannotxlabel-xx-xy-polygo).
+Please having some required fonts installed. You can refer to this [thread](https://stackoverflow.com/questions/71362738/r-error-in-grid-callc-textbounds-as-graphicsannotxlabel-xx-xy-polygo).
 
 ### Issue 6: Visualization becomes cluttered when there are more than 30 features of statistical significance.
 
 When faced with this issue, consider the following solutions:
 
-**Solution 1: Utilize the ‘select’ parameter**
+**Solution 1: Utilize the 'select' parameter**
 
-The ‘select’ parameter allows you to specify which features you wish to
-visualize. Here’s an example of how you can apply this in your code:
+The 'select' parameter allows you to specify which features you wish to visualize. Here's an example of how you can apply this in your code:
 
-    ggpicrust2::pathway_errorbar(
-      abundance = kegg_abundance,
-      daa_results_df = daa_results_df_annotated,
-      Group = metadata$Day,
-      p_values_threshold = 0.05,
-      order = "pathway_class",
-      select = c("ko05340", "ko00564", "ko00680", "ko00562", "ko03030", "ko00561", "ko00440", "ko00250", "ko00740", "ko04940", "ko00010", "ko00195", "ko00760", "ko00920", "ko00311", "ko00310", "ko04146", "ko00600", "ko04141", "ko04142", "ko00604", "ko04260", "ko00909", "ko04973", "ko00510", "ko04974"),
-      ko_to_kegg = TRUE,
-      p_value_bar = FALSE,
-      colors = NULL,
-      x_lab = "pathway_name"
-    )
+```         
+ggpicrust2::pathway_errorbar(
+  abundance = kegg_abundance,
+  daa_results_df = daa_results_df_annotated,
+  Group = metadata$Day,
+  p_values_threshold = 0.05,
+  order = "pathway_class",
+  select = c("ko05340", "ko00564", "ko00680", "ko00562", "ko03030", "ko00561", "ko00440", "ko00250", "ko00740", "ko04940", "ko00010", "ko00195", "ko00760", "ko00920", "ko00311", "ko00310", "ko04146", "ko00600", "ko04141", "ko04142", "ko00604", "ko04260", "ko00909", "ko04973", "ko00510", "ko04974"),
+  ko_to_kegg = TRUE,
+  p_value_bar = FALSE,
+  colors = NULL,
+  x_lab = "pathway_name"
+)
+```
 
 **Solution 2: Limit to the Top 20 features**
 
-If there are too many significant features to visualize effectively, you
-might consider limiting your visualization to the top 20 features with
-the smallest adjusted p-values:
+If there are too many significant features to visualize effectively, you might consider limiting your visualization to the top 20 features with the smallest adjusted p-values:
 
-    daa_results_df_annotated <- daa_results_df_annotated[!is.na(daa_results_df_annotated$pathway_name),]
+```         
+daa_results_df_annotated <- daa_results_df_annotated[!is.na(daa_results_df_annotated$pathway_name),]
 
-    daa_results_df_annotated$p_adjust <- round(daa_results_df_annotated$p_adjust,5)
+daa_results_df_annotated$p_adjust <- round(daa_results_df_annotated$p_adjust,5)
 
-    low_p_feature <- daa_results_df_annotated[order(daa_results_df_annotated$p_adjust), ]$feature[1:20]
+low_p_feature <- daa_results_df_annotated[order(daa_results_df_annotated$p_adjust), ]$feature[1:20]
 
 
-    p <- ggpicrust2::pathway_errorbar(
-      abundance = kegg_abundance,
-      daa_results_df = daa_results_df_annotated,
-      Group = metadata$Day,
-      p_values_threshold = 0.05,
-      order = "pathway_class",
-      select = low_p_feature,
-      ko_to_kegg = TRUE,
-      p_value_bar = FALSE,
-      colors = NULL,
-      x_lab = "pathway_name"
-    )
+p <- ggpicrust2::pathway_errorbar(
+  abundance = kegg_abundance,
+  daa_results_df = daa_results_df_annotated,
+  Group = metadata$Day,
+  p_values_threshold = 0.05,
+  order = "pathway_class",
+  select = low_p_feature,
+  ko_to_kegg = TRUE,
+  p_value_bar = FALSE,
+  colors = NULL,
+  x_lab = "pathway_name"
+)
+```
 
 ### Issue 7: There are no statistically significant biomarkers
 
-If you are not finding any statistically significant biomarkers in your
-analysis, there could be several reasons for this:
+If you are not finding any statistically significant biomarkers in your analysis, there could be several reasons for this:
 
-1.  **The true difference between your groups is small or
-    non-existent.** If the microbial communities or pathways you’re
-    comparing are truly similar, then it’s correct and expected that you
-    won’t find significant differences.
+1.  **The true difference between your groups is small or non-existent.** If the microbial communities or pathways you're comparing are truly similar, then it's correct and expected that you won't find significant differences.
 
-2.  **Your sample size might be too small to detect the differences.**
-    Statistical power, the ability to detect differences if they exist,
-    increases with sample size.
+2.  **Your sample size might be too small to detect the differences.** Statistical power, the ability to detect differences if they exist, increases with sample size.
 
-3.  **The variation within your groups might be too large.** If there’s
-    a lot of variation in microbial communities within a single group,
-    it can be hard to detect differences between groups.
+3.  **The variation within your groups might be too large.** If there's a lot of variation in microbial communities within a single group, it can be hard to detect differences between groups.
 
 Here are a few suggestions:
 
-1.  **Increase your sample size**: If possible, adding more samples to
-    your analysis can increase your statistical power, making it easier
-    to detect significant differences.
+1.  **Increase your sample size**: If possible, adding more samples to your analysis can increase your statistical power, making it easier to detect significant differences.
 
-2.  **Decrease intra-group variation**: If there’s a lot of variation
-    within your groups, consider whether there are outliers or subgroups
-    that are driving this variation. You might need to clean your data,
-    or to stratify your analysis to account for these subgroups.
+2.  **Decrease intra-group variation**: If there's a lot of variation within your groups, consider whether there are outliers or subgroups that are driving this variation. You might need to clean your data, or to stratify your analysis to account for these subgroups.
 
-3.  **Change your statistical method or adjust parameters**: Depending
-    on the nature of your data and your specific question, different
-    statistical methods might be more or less powerful. If you’re
-    currently using a parametric test, consider using a non-parametric
-    test, or vice versa. Also, consider whether adjusting the parameters
-    of your current test might help.
+3.  **Change your statistical method or adjust parameters**: Depending on the nature of your data and your specific question, different statistical methods might be more or less powerful. If you're currently using a parametric test, consider using a non-parametric test, or vice versa. Also, consider whether adjusting the parameters of your current test might help.
 
-Remember, not finding significant results is also a result and can be
-informative, as it might indicate that there are no substantial
-differences between the groups you’re studying. It’s important to
-interpret your results in the context of your specific study and not to
-force statistical significance where there isn’t any.
+Remember, not finding significant results is also a result and can be informative, as it might indicate that there are no substantial differences between the groups you're studying. It's important to interpret your results in the context of your specific study and not to force statistical significance where there isn't any.
 
-With these strategies, you should be able to create a more readable and
-informative visualization, even when dealing with a large number of
-significant features.
+With these strategies, you should be able to create a more readable and informative visualization, even when dealing with a large number of significant features.
 
-## Author’s other projects
-
-[MicrobiomeGallery](https://a95dps-caffery-chen.shinyapps.io/MicrobiomeGallery/),
-a web-based platform for sharing microbiome data visualization code and
-datasets. （It’s still under construction）
-
-![](https://raw.githubusercontent.com/cafferychen777/ggpicrust2_paper/main/paper_figure/MicrobiomeGallery_preview.jpg)

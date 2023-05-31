@@ -16,19 +16,29 @@
 #'
 #' @examples
 #' # Create example functional pathway abundance data
-#' abundance_example <- matrix(rnorm(30), nrow = 10, ncol = 3)
-#' rownames(abundance_example) <- paste0("Sample", 1:10)
-#' colnames(abundance_example) <- c("PathwayA", "PathwayB", "PathwayC")
+#' kegg_abundance_example <- matrix(rnorm(30), nrow = 3, ncol = 10)
+#' colnames(kegg_abundance_example) <- paste0("Sample", 1:10)
+#' rownames(kegg_abundance_example) <- c("PathwayA", "PathwayB", "PathwayC")
 #'
 #' # Create example metadata
 #' # Please ensure the sample IDs in the metadata have the column name "sample_name"
-#' metadata_example <- data.frame(sample_name = rownames(abundance_example),
+#' metadata_example <- data.frame(sample_name = colnames(kegg_abundance_example),
 #'                                group = factor(rep(c("Control", "Treatment"), each = 5)))
 #'
 #' # Create a heatmap
-#' heatmap_plot <- pathway_heatmap(t(abundance_example), metadata_example, "group")
-#' print(heatmap_plot)
-utils::globalVariables(c("rowname","Sample","Value"))
+#' pathway_heatmap(kegg_abundance_example, metadata_example, "group")
+#'
+#' \donttest{
+#' data("metacyc_abundance")
+#' data("metadata")
+#' metacyc_daa_results_df <- pathway_daa(metacyc_abundance %>% column_to_rownames("pathway"),
+#' metadata, "Environment", daa_method = "LinDA")
+#' feature_with_p_0.05 <- metacyc_daa_results_df %>% filter(p_adjust < 0.05)
+#' pathway_heatmap(abundance = metacyc_abundance %>% filter(pathway %in%
+#' feature_with_p_0.05$feature) %>%
+#' column_to_rownames("pathway"), metadata = metadata, group = "Environment")
+#' }
+utils::globalVariables(c("rowname","Sample","Value","quantile"))
 pathway_heatmap <- function(abundance, metadata, group) {
    # Heatmaps use color changes to visualize changes in values. However, if the
    # data for plotting the heat map are too different, for example, if the heat
@@ -44,16 +54,30 @@ pathway_heatmap <- function(abundance, metadata, group) {
    # in all samples becomes a set of values with a mean of 0 and a standard
    # deviation of 1. At this point, the plotted heat map gives a good indication
    # of the variation in expression of all genes across samples.
+
+  # Check that 'group' is a column in 'metadata'
+  if (!group %in% colnames(metadata)) {
+    stop(paste("group:", group, "must be a column in metadata"))
+  }
+
+  # Check if the samples in abundance and metadata match
+  if (!all(colnames(abundance) %in% metadata$sample_name)) {
+    stop("Samples in abundance and metadata must match")
+  }
+
   z_abundance <- t(apply(abundance, 1, scale))
   colnames(z_abundance) <- colnames(abundance)
-
 
   # Convert the abundance matrix to a data frame
   z_df <- as.data.frame(z_abundance)
 
+  metadata <- metadata %>% as.data.frame()
+
   # Order the samples based on the environment information
   ordered_metadata <- metadata[order(metadata[, group]),]
+  ordered_sample_names <- ordered_metadata$sample_name
   order <- ordered_metadata$sample_name
+  ordered_group_levels <- ordered_metadata %>% select(all_of(c(group))) %>% pull()
 
 
   # Convert the abundance data frame to a long format
@@ -66,12 +90,15 @@ pathway_heatmap <- function(abundance, metadata, group) {
   # Set the order of the samples in the heatmap
   long_df$Sample <- factor(long_df$Sample, levels = order)
 
+  # Compute breaks from the data
+  breaks <- quantile(long_df$Value, probs = seq(0, 1, by = 0.3), na.rm = TRUE)
+
   # Create the heatmap using ggplot
   p <-
     ggplot2::ggplot(data = long_df,
                     mapping = ggplot2::aes(x = Sample, y = rowname, fill = Value)) +
     ggplot2::geom_tile() +
-    ggplot2::scale_fill_gradientn(colours = c("#0571b0","#92c5de","white","#f4a582","#ca0020"), breaks = c(0,0.2, 0.4, 0.6)) +
+    ggplot2::scale_fill_gradientn(colours = c("#0571b0","#92c5de","white","#f4a582","#ca0020"), breaks = breaks) +
     ggplot2::labs(x = NULL, y = NULL) +
     ggplot2::scale_y_discrete(expand = c(0, 0), position = "left") +
     ggplot2::scale_x_discrete(expand = c(0, 0)) +
@@ -105,6 +132,14 @@ pathway_heatmap <- function(abundance, metadata, group) {
       )
     )
 
+  # Print the ordered sample names and group levels
+  cat("The Sample Names in order from left to right are:\n")
+  cat(ordered_sample_names, sep = ", ")
+  cat("\n")
+
+  cat("The Group Levels in order from left to right are:\n")
+  cat(ordered_group_levels, sep = ", ")
+  cat("\n")
 
   return(p)
 }
