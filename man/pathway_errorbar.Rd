@@ -34,16 +34,22 @@ The function pathway_errorbar() is used to visualize the results of functional p
 \dontrun{
 # Example 1: Analyzing KEGG pathway abundance
 metadata <- read_delim(
-  "~/Microbiome/C9orf72/Code And Data/new_metadata.txt",
+  "path/to/your/metadata.txt",
   delim = "\t",
   escape_double = FALSE,
   trim_ws = TRUE
 )
 
+# data(metadata)
+
 kegg_abundance <- ko2kegg_abundance(
-  "/Users/apple/Downloads/
-  pred_metagenome_unstrat.tsv/pred_metagenome_unstrat.tsv"
+  "path/to/your/pred_metagenome_unstrat.tsv"
 )
+
+# data(kegg_abundance)
+
+# Please change group to "your_group_column" if you are not using example dataset
+group <- "Environment"
 
 daa_results_df <- pathway_daa(
   abundance = kegg_abundance,
@@ -54,8 +60,9 @@ daa_results_df <- pathway_daa(
   reference = NULL
 )
 
+# Please check the unique(daa_results_df$method) and choose one
 daa_sub_method_results_df <- daa_results_df[daa_results_df$method
-== "ALDEx2_Kruskal-Wallace test", ]
+== "ALDEx2_Welch's t test", ]
 
 daa_annotated_sub_method_results_df <- pathway_annotation(
   pathway = "KO",
@@ -63,15 +70,19 @@ daa_annotated_sub_method_results_df <- pathway_annotation(
   ko_to_kegg = TRUE
 )
 
-Group <- metadata$Enviroment
+# Please change Group to metadata$your_group_column if you are not using example dataset
+Group <- metadata$Environment
 
-daa_results_list <- pathway_errorbar(
+p <- pathway_errorbar(
   abundance = kegg_abundance,
   daa_results_df = daa_annotated_sub_method_results_df,
   Group = Group,
   p_values_threshold = 0.05,
   order = "pathway_class",
-  select = NULL,
+  select = daa_annotated_sub_method_results_df \%>\%
+  arrange(p_adjust) \%>\%
+  slice(1:20) \%>\%
+  select("feature") \%>\% pull(),
   ko_to_kegg = TRUE,
   p_value_bar = TRUE,
   colors = NULL,
@@ -80,41 +91,43 @@ daa_results_list <- pathway_errorbar(
 
 # Example 2: Analyzing EC, MetaCyc, KO without conversions
 metadata <- read_delim(
-  "~/Microbiome/C9orf72/Code And Data/new_metadata.txt",
+  "path/to/your/metadata.txt",
   delim = "\t",
   escape_double = FALSE,
   trim_ws = TRUE
 )
+# data(metadata)
 
-ko_abundance <- read.delim("/Users/apple/Downloads/
-pred_metagenome_unstrat.tsv/pred_metagenome_unstrat.tsv")
+ko_abundance <- read.delim("path/to/your/metacyc_abundance.tsv")
+
+# data(metacyc_abundance)
+
+group <- "Environment"
 
 daa_results_df <- pathway_daa(
-  abundance = ko_abundance,
+  abundance = metacyc_abundance \%>\% column_to_rownames("pathway"),
   metadata = metadata,
   group = group,
-  daa_method = "ALDEx2",
+  daa_method = "LinDA",
   select = NULL,
   reference = NULL
 )
 
-daa_sub_method_results_df <- daa_results_df[daa_results_df$method
-== "ALDEx2_Kruskal-Wallace test", ]
 
-daa_annotated_sub_method_results_df <- pathway_annotation(
-  pathway = "KO",
-  daa_results_df = daa_sub_method_results_df,
+daa_annotated_results_df <- pathway_annotation(
+  pathway = "MetaCyc",
+  daa_results_df = daa_results_df,
   ko_to_kegg = FALSE
 )
 
-Group <- metadata$Enviroment
+Group <- metadata$Environment
 
-daa_results_list <- pathway_errorbar(
-  abundance = ko_abundance,
-  daa_results_df = daa_annotated_sub_method_results_df,
+p <- pathway_errorbar(
+  abundance = metacyc_abundance \%>\% column_to_rownames("pathway"),
+  daa_results_df = daa_annotated_results_df,
   Group = Group,
   p_values_threshold = 0.05,
-  order = "pathway_class",
+  order = "group",
   select = NULL,
   ko_to_kegg = FALSE,
   p_value_bar = TRUE,

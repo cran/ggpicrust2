@@ -15,6 +15,13 @@
 #' @import tidyr
 #'
 #' @examples
+#' \donttest{
+#' library(ggpicrust2)
+#' library(ggh4x)
+#' library(dplyr)
+#' library(tidyr)
+#' library(tibble)
+#' library(magrittr)
 #' # Create example functional pathway abundance data
 #' kegg_abundance_example <- matrix(rnorm(30), nrow = 3, ncol = 10)
 #' colnames(kegg_abundance_example) <- paste0("Sample", 1:10)
@@ -27,18 +34,23 @@
 #'
 #' # Create a heatmap
 #' pathway_heatmap(kegg_abundance_example, metadata_example, "group")
-#'
-#' \donttest{
+#' # Use real dataset
 #' data("metacyc_abundance")
 #' data("metadata")
-#' metacyc_daa_results_df <- pathway_daa(metacyc_abundance %>% column_to_rownames("pathway"),
-#' metadata, "Environment", daa_method = "LinDA")
+#' metacyc_daa_results_df <- pathway_daa(abundance = metacyc_abundance %>%
+#' column_to_rownames("pathway"),
+#' metadata = metadata, group = "Environment", daa_method = "LinDA")
+#' annotated_metacyc_daa_results_df <- pathway_annotation(pathway = "MetaCyc",
+#' daa_results_df = metacyc_daa_results_df, ko_to_kegg = FALSE)
 #' feature_with_p_0.05 <- metacyc_daa_results_df %>% filter(p_adjust < 0.05)
-#' pathway_heatmap(abundance = metacyc_abundance %>% filter(pathway %in%
-#' feature_with_p_0.05$feature) %>%
-#' column_to_rownames("pathway"), metadata = metadata, group = "Environment")
+#' pathway_heatmap(abundance = metacyc_abundance %>%
+#' right_join(annotated_metacyc_daa_results_df %>%
+#' select(all_of(c("feature","description"))), by = c("pathway" = "feature")) %>%
+#' filter(pathway %in% feature_with_p_0.05$feature) %>%
+#' select(-"pathway") %>%
+#' column_to_rownames("description"), metadata = metadata, group = "Environment")
 #' }
-utils::globalVariables(c("rowname","Sample","Value","quantile"))
+utils::globalVariables(c("rowname","Sample","Value","quantile","facet_nested","strip_nested","elem_list_rect"))
 pathway_heatmap <- function(abundance, metadata, group) {
    # Heatmaps use color changes to visualize changes in values. However, if the
    # data for plotting the heat map are too different, for example, if the heat
@@ -60,10 +72,15 @@ pathway_heatmap <- function(abundance, metadata, group) {
     stop(paste("group:", group, "must be a column in metadata"))
   }
 
-  # Check if the samples in abundance and metadata match
+  # Find the column in metadata that matches the column names of abundance
+  sample_name_col <- colnames(metadata)[sapply(colnames(metadata), function(x) all(colnames(abundance) %in% metadata[[x]]))]
+  metadata$sample_name <- metadata %>% select(all_of(c(sample_name_col))) %>% pull()
+
   if (!all(colnames(abundance) %in% metadata$sample_name)) {
     stop("Samples in abundance and metadata must match")
   }
+
+  # Now sample_name_col contains the column name in metadata that stores the sample names
 
   z_abundance <- t(apply(abundance, 1, scale))
   colnames(z_abundance) <- colnames(abundance)
@@ -85,20 +102,22 @@ pathway_heatmap <- function(abundance, metadata, group) {
     tibble::rownames_to_column() %>%
     tidyr::pivot_longer(cols = -rowname,
                         names_to = "Sample",
-                        values_to = "Value")
+                        values_to = "Value") %>% left_join(metadata %>% select(all_of(c("sample_name",group))), by = c("Sample" = "sample_name"))
 
   # Set the order of the samples in the heatmap
   long_df$Sample <- factor(long_df$Sample, levels = order)
 
   # Compute breaks from the data
-  breaks <- quantile(long_df$Value, probs = seq(0, 1, by = 0.3), na.rm = TRUE)
+  breaks <- range(long_df$Value, na.rm = TRUE)
+
+  colors <- c("#d93c3e", "#3685bc", "#6faa3e", "#e8a825", "#c973e6", "#ee6b3d", "#2db0a7", "#f25292")
 
   # Create the heatmap using ggplot
   p <-
     ggplot2::ggplot(data = long_df,
                     mapping = ggplot2::aes(x = Sample, y = rowname, fill = Value)) +
     ggplot2::geom_tile() +
-    ggplot2::scale_fill_gradientn(colours = c("#0571b0","#92c5de","white","#f4a582","#ca0020"), breaks = breaks) +
+    ggplot2::scale_fill_gradient2(low = "#0571b0", mid = "white", high = "#ca0020", midpoint = 0) +
     ggplot2::labs(x = NULL, y = NULL) +
     ggplot2::scale_y_discrete(expand = c(0, 0), position = "left") +
     ggplot2::scale_x_discrete(expand = c(0, 0)) +
@@ -112,10 +131,12 @@ pathway_heatmap <- function(abundance, metadata, group) {
         size = 10,
         face = "bold"
       ),
+      panel.spacing = unit(0, "lines"),
       legend.title = ggplot2::element_text(size = 12, color = "black",face = "bold"),
       legend.text = ggplot2::element_text(size = 12, color = "black",face = "bold"),
       panel.background = ggplot2::element_blank(),
-      legend.margin = ggplot2::margin(l = 0, unit = "cm")
+      legend.margin = ggplot2::margin(l = 0, unit = "cm"),
+      strip.text = element_text(size = 12, face = "bold")
     ) +
     # Add a color bar to the heatmap
     ggplot2::guides(
@@ -130,7 +151,7 @@ pathway_heatmap <- function(abundance, metadata, group) {
         ticks = TRUE,
         label = TRUE
       )
-    )
+    ) + ggh4x::facet_nested(cols = vars(!!sym(group)), space = "free", scale = "free", switch = "x", strip =strip_nested(background_x = elem_list_rect(fill = colors)))
 
   # Print the ordered sample names and group levels
   cat("The Sample Names in order from left to right are:\n")

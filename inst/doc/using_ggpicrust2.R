@@ -27,7 +27,7 @@ knitr::opts_chunk$set(
 #  # Run ggpicrust2 with input file path
 #  results_file_input <- ggpicrust2(file = abundance_file,
 #                                   metadata = metadata,
-#                                   group = "your_group_column",
+#                                   group = "your_group_column", # For example dataset, group = "Environment"
 #                                   pathway = "KO",
 #                                   daa_method = "LinDA",
 #                                   ko_to_kegg = TRUE,
@@ -41,7 +41,7 @@ knitr::opts_chunk$set(
 #  # Run ggpicrust2 with input data
 #  results_data_input <- ggpicrust2(data = abundance_data,
 #                                   metadata = metadata,
-#                                   group = "your_group_column",
+#                                   group = "your_group_column", # For example dataset, group = "Environment"
 #                                   pathway = "KO",
 #                                   daa_method = "LinDA",
 #                                   ko_to_kegg = TRUE,
@@ -92,42 +92,58 @@ knitr::opts_chunk$set(
 #  # KEGG pathways typically have more explainable descriptions.
 #  
 #  # Load metadata as a tibble
+#  # data(metadata)
 #  metadata <- read_delim("path/to/your/metadata.txt", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
 #  
 #  # Load KEGG pathway abundance
+#  # data(kegg_abundance)
 #  kegg_abundance <- ko2kegg_abundance("path/to/your/pred_metagenome_unstrat.tsv")
 #  
 #  # Perform pathway differential abundance analysis (DAA) using ALDEx2 method
+#  # Please change group to "your_group_column" if you are not using example dataset
 #  daa_results_df <- pathway_daa(abundance = kegg_abundance, metadata = metadata, group = "Environment", daa_method = "ALDEx2", select = NULL, reference = NULL)
 #  
-#  # Filter results for ALDEx2_Kruskal-Wallace test method
-#  daa_sub_method_results_df <- daa_results_df[daa_results_df$method == "ALDEx2_Kruskal-Wallace test", ]
+#  # Filter results for ALDEx2_Welch's t test method
+#  # Please check the unique(daa_results_df$method) and choose one
+#  daa_sub_method_results_df <- daa_results_df[daa_results_df$method == "ALDEx2_Wilcoxon rank test", ]
 #  
 #  # Annotate pathway results using KO to KEGG conversion
 #  daa_annotated_sub_method_results_df <- pathway_annotation(pathway = "KO", daa_results_df = daa_sub_method_results_df, ko_to_kegg = TRUE)
 #  
 #  # Generate pathway error bar plot
-#  daa_results_list <- pathway_errorbar(abundance = kegg_abundance, daa_results_df = daa_annotated_sub_method_results_df, Group = metadata$Environment, p_values_threshold = 0.05, order = "pathway_class", select = NULL, ko_to_kegg = TRUE, p_value_bar = TRUE, colors = NULL, x_lab = "pathway_name")
+#  # Please change Group to metadata$your_group_column if you are not using example dataset
+#  p <- pathway_errorbar(abundance = kegg_abundance, daa_results_df = daa_annotated_sub_method_results_df, Group = metadata$Environment, p_values_threshold = 0.05, order = "pathway_class", select = NULL, ko_to_kegg = TRUE, p_value_bar = TRUE, colors = NULL, x_lab = "pathway_name")
 #  
 #  # If you want to analyze EC, MetaCyc, and KO without conversions, turn ko_to_kegg to FALSE.
 #  
 #  # Load metadata as a tibble
+#  # data(metadata)
 #  metadata <- read_delim("path/to/your/metadata.txt", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
 #  
 #  # Load KO abundance as a data.frame
+#  # data(ko_abundance)
 #  ko_abundance <- read.delim("path/to/your/pred_metagenome_unstrat.tsv")
 #  
 #  # Perform pathway DAA using ALDEx2 method
+#  # Please change column_to_rownames() to the feature column if you are not using example dataset
+#  # Please change group to "your_group_column" if you are not using example dataset
 #  daa_results_df <- pathway_daa(abundance = ko_abundance %>% column_to_rownames("#NAME"), metadata = metadata, group = "Environment", daa_method = "ALDEx2", select = NULL, reference = NULL)
 #  
 #  # Filter results for ALDEx2_Kruskal-Wallace test method
-#  daa_sub_method_results_df <- daa_results_df[daa_results_df$method == "ALDEx2_Kruskal-Wallace test", ]
+#  daa_sub_method_results_df <- daa_results_df[daa_results_df$method == "ALDEx2_Wilcoxon rank test", ]
 #  
 #  # Annotate pathway results without KO to KEGG conversion
 #  daa_annotated_sub_method_results_df <- pathway_annotation(pathway = "KO", daa_results_df = daa_sub_method_results_df, ko_to_kegg = FALSE)
 #  
 #  # Generate pathway error bar plot
-#  p <- pathway_errorbar(abundance = ko_abundance %>% column_to_rownames("#NAME"), daa_results_df = daa_annotated_sub_method_results_df, Group = metadata$Environment, p_values_threshold = 0.05, order = "pathway_class", select = NULL, ko_to_kegg = FALSE, p_value_bar = TRUE, colors = NULL, x_lab = "description")
+#  # Please change column_to_rownames() to the feature column
+#  # Please change Group to metadata$your_group_column if you are not using example dataset
+#  p <- pathway_errorbar(abundance = ko_abundance %>% column_to_rownames("#NAME"), daa_results_df = daa_annotated_sub_method_results_df, Group = metadata$Environment, p_values_threshold = 0.05, order = "group",
+#  select = daa_annotated_sub_method_results_df %>% arrange(p_adjust) %>% slice(1:20) %>% dplyr::select(feature) %>% pull(),
+#  ko_to_kegg = FALSE,
+#  p_value_bar = TRUE,
+#  colors = NULL,
+#  x_lab = "description")
 #  
 #  # Workflow for MetaCyc Pathway and EC
 #  
@@ -136,22 +152,32 @@ knitr::opts_chunk$set(
 #  data("metadata")
 #  
 #  # Perform pathway DAA using LinDA method
+#  # Please change column_to_rownames() to the feature column if you are not using example dataset
+#  # Please change group to "your_group_column" if you are not using example dataset
 #  metacyc_daa_results_df <- pathway_daa(abundance = metacyc_abundance %>% column_to_rownames("pathway"), metadata = metadata, group = "Environment", daa_method = "LinDA")
 #  
 #  # Annotate MetaCyc pathway results without KO to KEGG conversion
 #  metacyc_daa_annotated_results_df <- pathway_annotation(pathway = "MetaCyc", daa_results_df = daa_results_df, ko_to_kegg = FALSE)
 #  
 #  # Generate pathway error bar plot
+#  # Please change column_to_rownames() to the feature column
+#  # Please change Group to metadata$your_group_column if you are not using example dataset
 #  pathway_errorbar(abundance = metacyc_abundance %>% column_to_rownames("pathway"), daa_results_df = metacyc_daa_annotated_results_df, Group = metadata$Environment, ko_to_kegg = FALSE, p_values_threshold = 0.05, order = "group", select = NULL, p_value_bar = TRUE, colors = NULL, x_lab = "description")
 #  
 #  # Generate pathway heatmap
+#  # Please change column_to_rownames() to the feature column if you are not using example dataset
+#  # Please change group to "your_group_column" if you are not using example dataset
 #  feature_with_p_0.05 <- metacyc_daa_results_df %>% filter(p_adjust < 0.05)
 #  pathway_heatmap(abundance = metacyc_abundance %>% filter(pathway %in% feature_with_p_0.05$feature) %>% column_to_rownames("pathway"), metadata = metadata, group = "Environment")
 #  
 #  # Generate pathway PCA plot
+#  # Please change column_to_rownames() to the feature column if you are not using example dataset
+#  # Please change group to "your_group_column" if you are not using example dataset
 #  pathway_pca(abundance = metacyc_abundance %>% column_to_rownames("pathway"), metadata = metadata, group = "Environment")
 #  
 #  # Run pathway DAA for multiple methods
+#  # Please change column_to_rownames() to the feature column if you are not using example dataset
+#  # Please change group to "your_group_column" if you are not using example dataset
 #  methods <- c("ALDEx2", "DESeq2", "edgeR")
 #  daa_results_list <- lapply(methods, function(method) {
 #    pathway_daa(abundance = metacyc_abundance %>% column_to_rownames("pathway"), metadata = metadata, group = "Environment", daa_method = method)
@@ -173,6 +199,7 @@ knitr::opts_chunk$set(
 #  kegg_abundance <- ko2kegg_abundance(file = ko_abundance_file)
 #  
 #  # Alternatively, if the KO abundance data is already loaded as a data frame named "ko_abundance"
+#  data("ko_abundance")
 #  kegg_abundance <- ko2kegg_abundance(data = ko_abundance)
 #  
 #  # The resulting kegg_abundance data frame can now be used for further analysis and visualization.
@@ -188,11 +215,13 @@ knitr::opts_chunk$set(
 #  metadata <- read_delim("path/to/your/metadata.txt", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
 #  
 #  # The default DAA method is "ALDEx2"
-#  daa_results_df <- pathway_daa(abundance = kegg_abundance, metadata = metadata, group = "Environment", daa_method = "limma voom", select = NULL, p.adjust = "BH", reference = NULL)
+#  # Please change group to "your_group_column" if you are not using example dataset
+#  daa_results_df <- pathway_daa(abundance = kegg_abundance, metadata = metadata, group = "Environment", daa_method = "linDA", select = NULL, p.adjust = "BH", reference = NULL)
 #  
 #  # If you have more than 3 group levels and want to use the LinDA, limma voom, or Maaslin2 methods, you should provide a reference.
 #  metadata <- read_delim("path/to/your/metadata.txt", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
 #  
+#  # Please change group to "your_group_column" if you are not using example dataset
 #  daa_results_df <- pathway_daa(abundance = kegg_abundance, metadata = metadata, group = "Group", daa_method = "LinDA", select = NULL, p.adjust = "BH", reference = "Harvard BRI")
 #  
 #  # Other example
@@ -207,6 +236,8 @@ knitr::opts_chunk$set(
 #  data("metadata")
 #  
 #  # Run pathway_daa function for multiple methods
+#  # Please change column_to_rownames() to the feature column if you are not using example dataset
+#  # Please change group to "your_group_column" if you are not using example dataset
 #  methods <- c("ALDEx2", "DESeq2", "edgeR")
 #  daa_results_list <- lapply(methods, function(method) {
 #    pathway_daa(abundance = metacyc_abundance %>% column_to_rownames("pathway"), metadata = metadata, group = "Environment", daa_method = method)
@@ -221,9 +252,18 @@ knitr::opts_chunk$set(
 #  # Make sure to check if the features in `daa_results_df` correspond to the selected pathway
 #  
 #  # Annotate KEGG Pathway
+#  data("kegg_abundance")
+#  data("metadata")
+#  # Please change group to "your_group_column" if you are not using example dataset
+#  daa_results_df <- pathway_daa(abundance = kegg_abundance, metadata = metadata, group = "Environment", daa_method = "LinDA")
 #  daa_annotated_results_df <- pathway_annotation(pathway = "KO", daa_results_df = daa_results_df, ko_to_kegg = TRUE)
 #  
 #  # Annotate KO
+#  data("ko_abundance")
+#  data("metadata")
+#  # Please change column_to_rownames() to the feature column if you are not using example dataset
+#  # Please change group to "your_group_column" if you are not using example dataset
+#  daa_results_df <- pathway_daa(abundance = ko_abundance %>% column_to_rownames("#NAME"), metadata = metadata, group = "Environment", daa_method = "LinDA")
 #  daa_annotated_results_df <- pathway_annotation(pathway = "KO", daa_results_df = daa_results_df, ko_to_kegg = FALSE)
 #  
 #  # Annotate KEGG
@@ -232,6 +272,8 @@ knitr::opts_chunk$set(
 #  # Annotate MetaCyc Pathway
 #  data("metacyc_abundance")
 #  data("metadata")
+#  # Please change column_to_rownames() to the feature column if you are not using example dataset
+#  # Please change group to "your_group_column" if you are not using example dataset
 #  metacyc_daa_results_df <- pathway_daa(abundance = metacyc_abundance %>% column_to_rownames("pathway"), metadata = metadata, group = "Environment", daa_method = "LinDA")
 #  metacyc_daa_annotated_results_df <- pathway_annotation(pathway = "MetaCyc", daa_results_df = metacyc_daa_results_df, ko_to_kegg = FALSE)
 
@@ -239,8 +281,10 @@ knitr::opts_chunk$set(
 #  data("ko_abundance")
 #  data("metadata")
 #  kegg_abundance <- ko2kegg_abundance(data = ko_abundance) # Or use data(kegg_abundance)
+#  # Please change group to "your_group_column" if you are not using example dataset
 #  daa_results_df <- pathway_daa(kegg_abundance, metadata = metadata, group = "Environment", daa_method = "LinDA")
 #  daa_annotated_results_df <- pathway_annotation(pathway = "KO", daa_results_df = daa_results_df, ko_to_kegg = TRUE)
+#  # Please change Group to metadata$your_group_column if you are not using example dataset
 #  p <- pathway_errorbar(abundance = kegg_abundance,
 #             daa_results_df = daa_annotated_results_df,
 #             Group = metadata$Environment,
@@ -270,24 +314,57 @@ knitr::opts_chunk$set(
 
 ## ----echo = TRUE,eval=FALSE---------------------------------------------------
 #  # Create example functional pathway abundance data
-#  abundance_example <- matrix(rnorm(30), nrow = 10, ncol = 3)
-#  rownames(abundance_example) <- paste0("Sample", 1:10)
-#  colnames(abundance_example) <- c("PathwayA", "PathwayB", "PathwayC")
+#  abundance_example <- matrix(rnorm(30), nrow = 3, ncol = 10)
+#  colnames(abundance_example) <- paste0("Sample", 1:10)
+#  rownames(abundance_example) <- c("PathwayA", "PathwayB", "PathwayC")
 #  
 #  # Create example metadata
 #  # Please change your sample id's column name to sample_name
-#  metadata_example <- data.frame(sample_name = rownames(abundance_example),
+#  metadata_example <- data.frame(sample_name = colnames(abundance_example),
 #                                 group = factor(rep(c("Control", "Treatment"), each = 5)))
 #  
 #  # Create a heatmap
-#  pathway_heatmap(t(abundance_example), metadata_example, "group")
+#  pathway_heatmap(abundance_example, metadata_example, "group")
 
 ## ----echo = TRUE,eval=FALSE---------------------------------------------------
+#  # Load the data
 #  data("metacyc_abundance")
+#  
+#  # Load the metadata
 #  data("metadata")
-#  metacyc_daa_results_df <- pathway_daa(metacyc_abundance %>% column_to_rownames("pathway"), metadata, "Environment", daa_method = "LinDA")
-#  feature_with_p_0.05 <- metacyc_daa_results_df %>% filter(p_adjust < 0.05)
-#  pathway_heatmap(abundance = metacyc_abundance %>% filter(pathway %in% feature_with_p_0.05$feature) %>% column_to_rownames("pathway"), metadata = metadata, group = "Environment")
+#  
+#  # Perform differential abundance analysis
+#  metacyc_daa_results_df <- pathway_daa(
+#    abundance = metacyc_abundance %>% column_to_rownames("pathway"),
+#    metadata = metadata,
+#    group = "Environment",
+#    daa_method = "LinDA"
+#  )
+#  
+#  # Annotate the results
+#  annotated_metacyc_daa_results_df <- pathway_annotation(
+#    pathway = "MetaCyc",
+#    daa_results_df = metacyc_daa_results_df,
+#    ko_to_kegg = FALSE
+#  )
+#  
+#  # Filter features with p < 0.05
+#  feature_with_p_0.05 <- metacyc_daa_results_df %>%
+#    filter(p_adjust < 0.05)
+#  
+#  # Create the heatmap
+#  pathway_heatmap(
+#    abundance = metacyc_abundance %>%
+#      right_join(
+#        annotated_metacyc_daa_results_df %>% select(all_of(c("feature","description"))),
+#        by = c("pathway" = "feature")
+#      ) %>%
+#      filter(pathway %in% feature_with_p_0.05$feature) %>%
+#      select(-"pathway") %>%
+#      column_to_rownames("description"),
+#    metadata = metadata,
+#    group = "Environment"
+#  )
 
 ## ----echo = TRUE,eval=FALSE---------------------------------------------------
 #  # Create example functional pathway abundance data
@@ -305,9 +382,11 @@ knitr::opts_chunk$set(
 #  # Create example functional pathway abundance data
 #  data("metacyc_abundance")
 #  data("metadata")
-#  pathway_pca(metacyc_abundance %>% column_to_rownames("pathway"), metadata, "Environment")
+#  
+#  pathway_pca(abundance = metacyc_abundance %>% column_to_rownames("pathway"), metadata = metadata, group = "Environment")
 
 ## ----compare_metagenome_results sample,echo = TRUE,eval=FALSE-----------------
+#  library(ComplexHeatmap)
 #  set.seed(123)
 #  # First metagenome
 #  metagenome1 <- abs(matrix(rnorm(1000), nrow = 100, ncol = 10))

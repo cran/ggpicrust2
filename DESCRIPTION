@@ -1,7 +1,7 @@
 Package: ggpicrust2
 Type: Package
 Title: Make 'PICRUSt2' Output Analysis and Visualization Easier
-Version: 1.7.0
+Version: 1.7.1
 Authors@R: c(
     person("Chen", "Yang", email = "cafferychen7850@gmail.com", role = c("aut", "cre")),
     person("Liangliang", "Zhang", email = "lxz716@case.edu ", role = "aut"))
@@ -13,8 +13,8 @@ Encoding: UTF-8
 LazyData: true
 RoxygenNote: 7.2.3
 Imports: ALDEx2, aplot, DESeq2, dplyr, edgeR, GGally, ggplot2, grid,
-        lefser, limma, Maaslin2, metagenomeSeq, MicrobiomeStat, readr,
-        stats, SummarizedExperiment, tibble, tidyr, ggprism, phyloseq,
+        ggh4x, lefser, limma, Maaslin2, metagenomeSeq, MicrobiomeStat,
+        readr, stats, SummarizedExperiment, tibble, tidyr, ggprism,
         patchwork, circlize
 Depends: R (>= 3.5.0)
 Suggests: covr, testthat (>= 3.0.0), cowplot, Biobase, devtools,
@@ -23,9 +23,9 @@ Suggests: covr, testthat (>= 3.0.0), cowplot, Biobase, devtools,
 Config/testthat/edition: 3
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2023-05-31 07:10:26 UTC; apple
+Packaged: 2023-06-05 11:30:12 UTC; apple
 Author: Chen Yang [aut, cre],
   Liangliang Zhang [aut]
 Maintainer: Chen Yang <cafferychen7850@gmail.com>
 Repository: CRAN
-Date/Publication: 2023-05-31 08:00:19 UTC
+Date/Publication: 2023-06-09 16:20:10 UTC

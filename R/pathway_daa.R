@@ -39,6 +39,8 @@
 #' \donttest{
 #' library(ggpicrust2)
 #' library(MicrobiomeStat)
+#' library(tibble)
+#' library(magrittr)
 #' abundance <- data.frame(sample1 = c(10, 20, 30),
 #' sample2 = c(20, 30, 40),
 #' sample3 = c(30, 40, 50),
@@ -50,6 +52,11 @@
 #' #Run pathway_daa function
 #' result <- pathway_daa(abundance = abundance, metadata = metadata, group = "group",
 #' daa_method = "LinDA")
+#'
+#' data(metacyc_abundance)
+#' data(metadata)
+#' daa_results_df <- pathway_daa(metacyc_abundance %>%
+#' column_to_rownames("pathway"), metadata, "Environment", daa_method = "LinDA")
 #' }
 pathway_daa <-
   function(abundance,
@@ -80,7 +87,7 @@ pathway_daa <-
     matching_columns <-
       names(metadata)[sapply(matches, function(x) {
         length(x) == length(sample_names)
-      })]
+      })][1]
     switch(is.null(select),
            "TRUE" = {
              abundance <- abundance
