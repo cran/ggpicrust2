@@ -1,7 +1,7 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# ggpicrust2 Documentation
+# ggpicrust2 vignettes
 
 *ggpicrust2* is a comprehensive package designed to provide a seamless
 and intuitive solution for analyzing and interpreting the results of
@@ -39,7 +39,7 @@ MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.or
 
 ## News
 
-Update alert! 🚨 ggpicrust2 Ver1.7 is now available. To get the latest
+Update alert! 🚨 ggpicrust2 Ver1.7.2 is now available. To get the latest
 version, simply use
 
 ``` r
@@ -72,18 +72,19 @@ Don’t miss out on the major bug fixes and improvements. 😀
 If you use *ggpicrust2* in your research, please cite the following
 paper:
 
-Chen Yang, Aaron Burberry, Xuan Cao, Jiahao Mai, Liangliang Zhang.
-(2023). [ggpicrust2: an R package for PICRUSt2 predicted functional
-profile analysis and visualization.](https://arxiv.org/abs/2303.10388)
-arXiv preprint arXiv:2303.10388.
+Chen Yang and others. (2023). ggpicrust2: an R package for PICRUSt2
+predicted functional profile analysis and visualization.
+*Bioinformatics*, btad470. [DOI
+link](https://doi.org/10.1093/bioinformatics/btad470)
 
-BibTeX entry: @misc{yang2023ggpicrust2, title={ggpicrust2: an R package
-for PICRUSt2 predicted functional profile analysis and visualization},
-author={Chen Yang and Aaron Burberry and Jiahao Mai and Xuan Cao and
-Liangliang Zhang}, year={2023}, eprint={2303.10388},
-archivePrefix={arXiv}, primaryClass={stat.AP} }
+BibTeX entry: [Download
+here](https://academic.oup.com/bioinformatics/advance-article/doi/10.1093/bioinformatics/btad470/7234609?utm_source=advanceaccess&utm_campaign=bioinformatics&utm_medium=email&login=false)
 
-ResearchGate preprint link: \[Click here\]
+ResearchGate link: [Click
+here](https://www.researchgate.net/publication/372829051_ggpicrust2_an_R_package_for_PICRUSt2_predicted_functional_profile_analysis_and_visualization)
+
+Bioinformatics link: [Click
+here](https://academic.oup.com/bioinformatics/advance-article/doi/10.1093/bioinformatics/btad470/7234609?utm_source=advanceaccess&utm_campaign=bioinformatics&utm_medium=email&login=false)
 
 ## Installation
 
@@ -142,6 +143,7 @@ devtools::install_github("cafferychen777/ggpicrust2")
 | lefser               | R implementation of the LEfSE method for microbiome biomarker discovery |
 | limma                | Linear Models for Microarray and RNA-Seq Data                           |
 | KEGGREST             | R Interface to KEGG REST API                                            |
+| DESeq2               | Differential gene expression analysis using RNA-seq data                |
 
 ``` r
 if (!requireNamespace("BiocManager", quietly = TRUE))
@@ -149,7 +151,7 @@ if (!requireNamespace("BiocManager", quietly = TRUE))
 
 pkgs <- c("phyloseq", "ALDEx2", "SummarizedExperiment", "Biobase", "devtools", 
           "ComplexHeatmap", "BiocGenerics", "BiocManager", "metagenomeSeq", 
-          "Maaslin2", "edgeR", "lefser", "limma", "KEGGREST")
+          "Maaslin2", "edgeR", "lefser", "limma", "KEGGREST", "DESeq2")
 
 for (pkg in pkgs) {
   if (!requireNamespace(pkg, quietly = TRUE))
@@ -159,8 +161,23 @@ for (pkg in pkgs) {
 
 ## Stay Updated
 
-Follow me on Twitter for the latest *ggpicrust2* updates:
-\[![](https://img.shields.io/twitter/follow/CafferyYang?style=social)\]
+Stay up to date with the latest *ggpicrust2* developments by following
+me on Twitter:
+[![](https://img.shields.io/twitter/follow/CafferyYang?style=social)](https://twitter.com/CafferyYang)
+
+On my Twitter account, you’ll find regular updates, announcements, and
+insights related to *ggpicrust2*. By following me, you’ll ensure that
+you never miss any important information or new features.
+
+Feel free to join the conversation, ask questions, and engage with other
+users who are also interested in *ggpicrust2*. Twitter is a great
+platform to stay connected and be a part of the community.
+
+Click on the Twitter follow button above or visit
+<https://twitter.com/CafferyYang> to follow me now!
+
+Thank you for your interest in *ggpicrust2*, and I look forward to
+keeping you informed about all the exciting updates!
 
 ## Workflow
 
@@ -339,7 +356,7 @@ data("metadata")
 metacyc_daa_results_df <- pathway_daa(abundance = metacyc_abundance %>% column_to_rownames("pathway"), metadata = metadata, group = "Environment", daa_method = "LinDA")
 
 # Annotate MetaCyc pathway results without KO to KEGG conversion
-metacyc_daa_annotated_results_df <- pathway_annotation(pathway = "MetaCyc", daa_results_df = daa_results_df, ko_to_kegg = FALSE)
+metacyc_daa_annotated_results_df <- pathway_annotation(pathway = "MetaCyc", daa_results_df = metacyc_daa_results_df, ko_to_kegg = FALSE)
 
 # Generate pathway error bar plot
 # Please change column_to_rownames() to the feature column
@@ -678,7 +695,7 @@ print(results$correlation$p_matrix)
 
 ## Share
 
-\[![Twitter](https://twitter.com/intent/tweet?url=https%3A%2F%2Fgithub.com%2Fcafferychen777%2Fggpicrust2&text=Check%20out%20this%20awesome%20package%20on%20GitHub)
+[![Twitter](https://img.shields.io/twitter/url?url=https%3A%2F%2Fgithub.com%2Fcafferychen777%2Fggpicrust2&style=social)](https://twitter.com/intent/tweet?url=https%3A%2F%2Fgithub.com%2Fcafferychen777%2Fggpicrust2&text=Check%20out%20this%20awesome%20package%20on%20GitHub%21)
 
 [![Facebook](https://img.shields.io/badge/Share_on-Facebook-1877F2?logo=facebook&style=social)](https://www.facebook.com/sharer/sharer.php?u=https%3A%2F%2Fgithub.com%2Fcafferychen777%2Fggpicrust2&quote=Check%20out%20this%20awesome%20package%20on%20GitHub%21)
 
@@ -853,10 +870,29 @@ With these strategies, you should be able to create a more readable and
 informative visualization, even when dealing with a large number of
 significant features.
 
-## Author’s other projects
+## Author’s Other Projects
 
-[MicrobiomeGallery](https://a95dps-caffery-chen.shinyapps.io/MicrobiomeGallery/),
-a web-based platform for sharing microbiome data visualization code and
-datasets. （It’s still under construction）
+1.  [MicrobiomeGallery](https://a95dps-caffery-chen.shinyapps.io/MicrobiomeGallery/),
+    a **web-based platform for sharing microbiome data visualization
+    code and datasets**. 📊💻 (Note: It’s still under construction)
 
 ![](https://raw.githubusercontent.com/cafferychen777/ggpicrust2_paper/main/paper_figure/MicrobiomeGallery_preview.jpg)
+
+2.  [MicrobiomeStat](https://www.microbiomestat.wiki/), a
+    **groundbreaking R package designed to revolutionize microbiome
+    analysis**. 🧬🔬 It’s not just another package; it’s a
+    **game-changer** in the field of microbiome analysis. MicrobiomeStat
+    is **specifically tailored for longitudinal studies**, providing
+    comprehensive solutions for both longitudinal and paired analyses.
+    The package is also adept at handling cross-sectional studies and is
+    **not limited to microbiome data** - it can deal with **multi-omics
+    data** as well. 🎯 Our ultimate aim is to make MicrobiomeStat the
+    **go-to R package for longitudinal analysis of multi-omics data**.
+    (Note: Both the package and wiki are still under development)
+
+If you’re interested in becoming a **dev user for MicrobiomeStat**,
+please email <cafferychen7850@gmail.com>. 📧
+
+Stay tuned for more exciting updates! 🎉
+
+![](https://cdn.staticaly.com/gh/cafferychen777/ggpicrust2_paper/main/paper_figure/WeChatac562b362dadbf21a03414be3a5d06a5.png)
