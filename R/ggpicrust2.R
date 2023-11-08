@@ -5,7 +5,7 @@
 #' @param metadata A tibble, consisting of sample information
 #' @param group A character, name of the group
 #' @param pathway A character, consisting of "EC", "KO", "MetaCyc"
-#' @param daa_method a character specifying the method for differential abundance analysis, choices are:
+#' @param daa_method a character specifying the method for differential abundance analysis, default is "ALDEx2", choices are:
 #' - "ALDEx2": ANOVA-Like Differential Expression tool for high throughput sequencing data
 #' - "DESeq2": Differential expression analysis based on the negative binomial distribution using DESeq2
 #' - "edgeR": Exact test for differences between two groups of negative-binomially distributed counts using edgeR
@@ -13,16 +13,14 @@
 #' - "metagenomeSeq": Fit logistic regression models to test for differential abundance between groups using metagenomeSeq
 #' - "LinDA": Linear models for differential abundance analysis of microbiome compositional data
 #' - "Maaslin2": Multivariate Association with Linear Models (MaAsLin2) for differential abundance analysis
-#' @default "ALDEx2"
 #' @param ko_to_kegg A character to control the conversion of KO abundance to KEGG abundance
-#' @param p.adjust a character specifying the method for p-value adjustment, choices are:
+#' @param p.adjust a character specifying the method for p-value adjustment, default is "BH", choices are:
 #'- "BH": Benjamini-Hochberg correction
 #'- "holm": Holm's correction
 #'- "bonferroni": Bonferroni correction
 #'- "hochberg": Hochberg's correction
 #'- "fdr": False discovery rate correction
 #'- "none": No p-value adjustment.
-#' @default "BH"
 #' @param order A character to control the order of the main plot rows
 #' @param p_values_bar A character to control if the main plot has the p_values bar
 #' @param x_lab A character to control the x-axis label name, you can choose from "feature","pathway_name" and "description"
@@ -31,7 +29,6 @@
 #' @param colors A vector consisting of colors number
 #'
 #' @return daa.results.df, a dataframe of DA results
-#' @value
 #' A list of sub-lists, each containing a ggplot2 plot (`plot`) and a dataframe of differential abundance results (`results`) for a specific DA method.
 #' Each plot visualizes the differential abundance results of a specific DA method, and the corresponding dataframe contains the results used to create the plot.
 #' @export
@@ -111,17 +108,17 @@ ggpicrust2 <- function(file = NULL,
   # Create an empty list
   plot_result_list <- list()
 
-  cat("Starting the ggpicrust2 analysis...\n")
+  message("Starting the ggpicrust2 analysis...\n")
 
   if (ko_to_kegg == TRUE){
-    cat("Converting KO to KEGG...\n")
+    message("Converting KO to KEGG...\n")
     plot_result_list <- list()
     abundance <- if (!is.null(file)) {
       ko2kegg_abundance(file)
     } else {
       ko2kegg_abundance(data = data)
     }
-    cat("Performing pathway differential abundance analysis...\n")
+    message("Performing pathway differential abundance analysis...\n")
     daa_results_df <- pathway_daa(
       abundance = abundance,
       metadata = metadata,
@@ -145,11 +142,11 @@ ggpicrust2 <- function(file = NULL,
       message(paste("Success: Found", num_significant_biomarkers, "statistically significant biomarker(s) in the dataset."))
     }
 
-    cat("Annotating pathways...\n")
+    message("Annotating pathways...\n")
     daa_results_df  <-
       pathway_annotation(daa_results_df = daa_results_df, ko_to_kegg = TRUE)
     j <- 1
-    cat("Creating pathway error bar plots...\n")
+    message("Creating pathway error bar plots...\n")
     for (i in unique(daa_results_df$method)) {
       daa_sub_method_results_df <-
         daa_results_df[daa_results_df[, "method"] == i, ]
@@ -170,13 +167,13 @@ ggpicrust2 <- function(file = NULL,
         list(plot = combination_bar_plot, results = daa_sub_method_results_df)
       # Add sublists to the main list
       plot_result_list[[j]] <- sub_list
-      cat(sprintf("Plot %d created.\n", j))
+      message(sprintf("Plot %d created.\n", j))
       j <- j + 1
     }
-    cat("ggpicrust2 analysis completed.\n")
+    message("ggpicrust2 analysis completed.\n")
     return(plot_result_list)
   } else {
-    cat("Reading input file or using provided data...\n")
+    message("Reading input file or using provided data...\n")
     plot_result_list <- list()
     abundance <- if (!is.null(file)) {
       readr::read_delim(
@@ -191,7 +188,7 @@ ggpicrust2 <- function(file = NULL,
     abundance <- as.data.frame(abundance)
     rownames(abundance) <- abundance[, 1]
     abundance <- abundance[, -1]
-    cat("Performing pathway differential abundance analysis...\n")
+    message("Performing pathway differential abundance analysis...\n")
     daa_results_df <- pathway_daa(
       abundance = abundance,
       metadata = metadata,
@@ -204,7 +201,7 @@ ggpicrust2 <- function(file = NULL,
     if(daa_method == "Lefse") {
       stop("The 'Lefse' method is not suitable for the ggpicrust2() function as Lefse in R does not output p-values, only effect sizes.")
     }
-    cat("Annotating pathways...\n")
+    message("Annotating pathways...\n")
     daa_results_df <-
       pathway_annotation(
         pathway = pathway,
@@ -212,7 +209,7 @@ ggpicrust2 <- function(file = NULL,
         daa_results_df = daa_results_df
       )
     j <- 1
-    cat("Creating pathway error bar plots...\n")
+    message("Creating pathway error bar plots...\n")
     for (i in unique(daa_results_df$method)) {
       daa_sub_method_results_df <-
         daa_results_df[daa_results_df[, "method"] == i, ]
@@ -233,10 +230,10 @@ ggpicrust2 <- function(file = NULL,
         list(plot = combination_bar_plot, results = daa_sub_method_results_df)
       # Add sublists to the main list
       plot_result_list[[j]] <- sub_list
-      cat(sprintf("Plot %d created.\n", j))
+      message(sprintf("Plot %d created.\n", j))
       j <- j + 1
     }
-    cat("ggpicrust2 analysis completed.\n")
+    message("ggpicrust2 analysis completed.\n")
     return(plot_result_list)
   }
 

@@ -39,14 +39,24 @@ MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.or
 
 ## News
 
-Update alert! 🚨 ggpicrust2 Ver1.7.2 is now available. To get the latest
-version, simply use
+Update alert! 🚨 ggpicrust2 Ver1.7.2 is now available. Due to some
+issues with the CRAN server, ggpicrust2 was inadvertently removed from
+CRAN. We are working diligently to resolve this issue. In the meantime,
+you can get the latest version from GitHub by using the following
+command:
 
 ``` r
 devtools::install_github('cafferychen777/ggpicrust2')
 ```
 
-Don’t miss out on the major bug fixes and improvements. 😀
+This update includes major bug fixes and improvements. Don’t miss out!
+😀
+
+**Join our official Discord channel for more updates and discussions:**
+[ggpicrust2 Discord](https://discord.com/invite/yaR7FEc8)
+
+Thank you for your understanding and patience as we work to resolve this
+issue.
 
 ## Table of Contents
 
@@ -429,7 +439,7 @@ Differential abundance(DA) analysis plays a major role in PICRUSt2
 downstream analysis. pathway_daa() integrates almost all DA methods
 applicable to the predicted functional profile which there excludes
 ANCOM and ANCOMBC. It includes
-[ALDEx2](https://bioconductor.riken.jp/packages/3.9/bioc/html/ALDEx2.html)(Fernandes
+[ALDEx2](https://www.bioconductor.org/packages/release/bioc/html/ALDEx2.html)(Fernandes
 et al., 2013),
 [DESeq2](https://bioconductor.org/packages/release/bioc/html/DESeq2.html)(Love
 et al., 2014),
@@ -443,7 +453,7 @@ voom](https://ucdavis-bioinformatics-training.github.io/2018-June-RNA-Seq-Worksh
 et al., 2015),
 [metagenomeSeq](https://www.bioconductor.org/packages/release/bioc/html/metagenomeSeq.html#:~:text=metagenomeSeq%20is%20designed%20to%20address,the%20testing%20of%20feature%20correlations.)(Paulson
 et al., 2013),
-[Lefser](http://bioconductor.org/packages/release/bioc/html/lefser.html)(Segata
+[Lefser](https://bioconductor.org/packages/release/bioc/html/lefser.html)(Segata
 et al., 2011).
 
 ``` r
@@ -487,7 +497,7 @@ daa_results_list <- lapply(methods, function(method) {
   pathway_daa(abundance = metacyc_abundance %>% column_to_rownames("pathway"), metadata = metadata, group = "Environment", daa_method = method)
 })
 
-method_names <- c("ALDEx2_Welch's t test","ALDEx2_Wilcoxon rank test","DESeq2", "edgeR")
+method_names <- c("ALDEx2","DESeq2", "edgeR")
 # Compare results across different methods
 comparison_results <- compare_daa_results(daa_results_list = daa_results_list, method_names = method_names)
 ```
@@ -872,27 +882,26 @@ significant features.
 
 ## Author’s Other Projects
 
-1.  [MicrobiomeGallery](https://a95dps-caffery-chen.shinyapps.io/MicrobiomeGallery/),
-    a **web-based platform for sharing microbiome data visualization
-    code and datasets**. 📊💻 (Note: It’s still under construction)
+1.  [MicrobiomeGallery](https://cafferyyang.shinyapps.io/MicrobiomeGallery/):
+    This is a web-based platform currently under development, which aims
+    to provide a space for sharing microbiome data visualization code
+    and datasets.
 
 ![](https://raw.githubusercontent.com/cafferychen777/ggpicrust2_paper/main/paper_figure/MicrobiomeGallery_preview.jpg)
 
-2.  [MicrobiomeStat](https://www.microbiomestat.wiki/), a
-    **groundbreaking R package designed to revolutionize microbiome
-    analysis**. 🧬🔬 It’s not just another package; it’s a
-    **game-changer** in the field of microbiome analysis. MicrobiomeStat
-    is **specifically tailored for longitudinal studies**, providing
-    comprehensive solutions for both longitudinal and paired analyses.
-    The package is also adept at handling cross-sectional studies and is
-    **not limited to microbiome data** - it can deal with **multi-omics
-    data** as well. 🎯 Our ultimate aim is to make MicrobiomeStat the
-    **go-to R package for longitudinal analysis of multi-omics data**.
-    (Note: Both the package and wiki are still under development)
+2.  [MicrobiomeStat](https://www.microbiomestat.wiki/): This is an R
+    package that aims to provide new tools for microbiome analysis. The
+    package is being developed with a particular focus on longitudinal
+    studies, but it also includes tools for handling cross-sectional
+    studies. While its primary purpose is to analyze microbiome data, it
+    also has capabilities for handling multi-omics data. The goal is for
+    MicrobiomeStat to become a widely-used tool for longitudinal
+    analysis of multi-omics data. Please note that both the package and
+    the accompanying wiki are still under development.
 
-If you’re interested in becoming a **dev user for MicrobiomeStat**,
-please email <cafferychen7850@gmail.com>. 📧
+If you’re interested in helping to test and develop MicrobiomeStat,
+please contact <cafferychen7850@gmail.com>.
 
-Stay tuned for more exciting updates! 🎉
+We look forward to sharing more updates as these projects progress.
 
 ![](https://cdn.staticaly.com/gh/cafferychen777/ggpicrust2_paper/main/paper_figure/WeChatac562b362dadbf21a03414be3a5d06a5.png)
