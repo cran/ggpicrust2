@@ -12,9 +12,8 @@
 #' @param colors A vector of colors to be used to represent the groups in the figure. Each color corresponds to a group.
 #' @param x_lab A character string to be used as the x-axis label in the figure. The default value is "description" for KOs'descriptions and "pathway_name" for KEGG pathway names.
 #' @importFrom stats sd
-#' @value A ggplot2 plot (`plot`)
+#' @return A ggplot2 plot showing the error bar plot of the differential abundance analysis results for the functional pathways.
 #' The plot visualizes the differential abundance results of a specific differential abundance analysis method. The corresponding dataframe contains the results used to create the plot.
-#' @return A figure showing the error bar plot of the differential abundance analysis results for the functional pathways.
 #' @export
 #'
 #' @examples
@@ -85,7 +84,7 @@
 #' )
 #' # data(metadata)
 #'
-#' ko_abundance <- read.delim("path/to/your/metacyc_abundance.tsv")
+#' metacyc_abundance <- read.delim("path/to/your/metacyc_abundance.tsv")
 #'
 #' # data(metacyc_abundance)
 #'
@@ -134,6 +133,31 @@ pathway_errorbar <-
            p_value_bar = TRUE,
            colors = NULL,
            x_lab = NULL) {
+    # 在函数开始处添加更完整的输入验证
+    if(!is.matrix(abundance) && !is.data.frame(abundance)) {
+      stop("'abundance' must be a matrix or data frame")
+    }
+
+    if(!is.data.frame(daa_results_df)) {
+      stop("'daa_results_df' must be a data frame")
+    }
+
+    # 检查必要的列
+    required_cols <- c("feature", "method", "group1", "group2", "p_adjust")
+    missing_cols <- setdiff(required_cols, colnames(daa_results_df))
+    if(length(missing_cols) > 0) {
+      stop("Missing required columns in daa_results_df: ",
+           paste(missing_cols, collapse = ", "))
+    }
+
+    # 在函数开始处添加数据验证
+    if (length(Group) != ncol(abundance)) {
+      stop("Length of Group must match number of columns in abundance matrix")
+    }
+
+    # 检查显著性特征的数量
+    sig_features <- sum(daa_results_df$p_adjust < 0.05)
+
     # Identify pathways with missing annotation
     missing_pathways <- daa_results_df[is.na(daa_results_df$pathway_name), "feature"]
 
@@ -180,13 +204,13 @@ pathway_errorbar <-
     }
 
     if (nlevels(factor(daa_results_df$method)) != 1) {
-      message(
+      stop(
         "The 'method' column in the 'daa_results_df' data frame contains more than one method. Please filter it to contain only one method."
       )
     }
 
     if (nlevels(factor(daa_results_df$group1)) != 1 || nlevels(factor(daa_results_df$group2)) != 1) {
-      message(
+      stop(
         "The 'group1' or 'group2' column in the 'daa_results_df' data frame contains more than one group. Please filter each to contain only one group."
       )
     }
@@ -194,15 +218,19 @@ pathway_errorbar <-
     if (is.null(colors)) {
       colors <- c("#d93c3e", "#3685bc", "#6faa3e", "#e8a825", "#c973e6", "#ee6b3d", "#2db0a7", "#f25292")[1:nlevels(as.factor(Group))]
     }
+
     errorbar_abundance_mat <- as.matrix(abundance)
+
     daa_results_filtered_df <-
       daa_results_df[daa_results_df$p_adjust < p_values_threshold,]
+
     if (!is.null(select)) {
       daa_results_filtered_sub_df <-
         daa_results_filtered_df[daa_results_filtered_df$feature %in% select, ]
     } else {
       daa_results_filtered_sub_df <- daa_results_filtered_df
     }
+
     if (nrow(daa_results_filtered_sub_df) > 30) {
       message(
         paste0(
@@ -216,6 +244,7 @@ pathway_errorbar <-
       )
       stop()
     }
+
     if (nrow(daa_results_filtered_sub_df) == 0){
       stop(
         "Visualization with 'pathway_errorbar' cannot be performed because there are no features with statistical significance. ",
@@ -236,21 +265,30 @@ pathway_errorbar <-
       t(sub_relative_abundance_mat)
     )
     error_bar_df <- as.data.frame(error_bar_matrix)
+
     error_bar_df$group <- factor(Group,levels = levels(as.factor(Group)))
+
       error_bar_pivot_longer_df <- tidyr::pivot_longer(error_bar_df,-c(sample, group))
+
     error_bar_pivot_longer_tibble <-
       mutate(error_bar_pivot_longer_df, group = as.factor(group))
+
     error_bar_pivot_longer_tibble$sample <-
       factor(error_bar_pivot_longer_tibble$sample)
+
     error_bar_pivot_longer_tibble$name <-
       factor(error_bar_pivot_longer_tibble$name)
+
     error_bar_pivot_longer_tibble$value <-
       as.numeric(error_bar_pivot_longer_tibble$value)
+
     error_bar_pivot_longer_tibble_summarised <-
       error_bar_pivot_longer_tibble %>% group_by(name, group) %>%
       summarise(mean = mean(value), sd = stats::sd(value))
+
     error_bar_pivot_longer_tibble_summarised <-
       error_bar_pivot_longer_tibble_summarised %>% mutate(group2 = "nonsense")
+
     switch(
       order,
       "p_values" = {
@@ -292,8 +330,10 @@ pathway_errorbar <-
         order <- order
       }
     )
+
     daa_results_filtered_sub_df <-
       daa_results_filtered_sub_df[order,]
+
     error_bar_pivot_longer_tibble_summarised_ordered <-
       data.frame(
         name = NULL,
@@ -301,6 +341,7 @@ pathway_errorbar <-
         mean = NULL,
         sd = NULL
       )
+
     for (i in daa_results_filtered_sub_df$feature) {
       error_bar_pivot_longer_tibble_summarised_ordered <-
         rbind(
@@ -309,6 +350,7 @@ pathway_errorbar <-
                                                      i,]
         )
     }
+
     if (ko_to_kegg == FALSE){
       error_bar_pivot_longer_tibble_summarised_ordered[, x_lab] <-
         rep(daa_results_filtered_sub_df[, x_lab], each = length(levels(
@@ -323,16 +365,17 @@ pathway_errorbar <-
               factor(error_bar_pivot_longer_tibble_summarised_ordered$group)
             )))
     }
+
     error_bar_pivot_longer_tibble_summarised_ordered$name <- factor(error_bar_pivot_longer_tibble_summarised_ordered$name, levels = rev(daa_results_filtered_sub_df$feature))
 
     bar_errorbar <-
-      ggplot2::ggplot(error_bar_pivot_longer_tibble_summarised_ordered, # nolint: object_usage_linter.
-             ggplot2::aes(mean, name, fill = group)) + # nolint
+      ggplot2::ggplot(error_bar_pivot_longer_tibble_summarised_ordered,
+             ggplot2::aes(mean, name, fill = group)) +
       ggplot2::geom_errorbar(
         ggplot2::aes(xmax = mean + sd, xmin = 0),
         position = ggplot2::position_dodge(width = 0.8),
         width = 0.5,
-        size = 0.5,
+        linewidth = 0.5,
         color = "black"
       ) +
       ggplot2::geom_bar(stat = "identity",
@@ -341,20 +384,19 @@ pathway_errorbar <-
       GGally::geom_stripped_cols(width = 10) +
       ggplot2::scale_fill_manual(values = colors) +
       ggplot2::scale_color_manual(values = colors) +
-      ggprism::theme_prism() +
-      ggplot2::scale_x_continuous(expand = c(0, 0),
-                         guide = "prism_offset_minor",) +
+      ggprism::theme_prism(base_size = 12) +
+      ggplot2::scale_x_continuous(expand = c(0, 0)) +
       ggplot2::scale_y_discrete(labels = rev(daa_results_filtered_sub_df[, x_lab])) +
       ggplot2::labs(x = "Relative Abundance", y = NULL) +
       ggplot2::theme(
         axis.ticks.y = ggplot2::element_blank(),
         axis.line.y = ggplot2::element_blank(),
-        axis.line.x = ggplot2::element_line(size = 0.5),
-        axis.ticks.x = ggplot2::element_line(size = 0.5),
+        axis.line.x = ggplot2::element_line(linewidth = 0.5),
+        axis.ticks.x = ggplot2::element_line(linewidth = 0.5),
         panel.grid.major.y = ggplot2::element_blank(),
         panel.grid.major.x = ggplot2::element_blank(),
-        axis.text = ggplot2::element_text(size = 10, color = "black"), # nolint
-        axis.text.x = ggplot2::element_text(margin = ggplot2::margin(r = 0)), # nolint
+        axis.text = ggplot2::element_text(size = 10, color = "black"),
+        axis.text.x = ggplot2::element_text(margin = ggplot2::margin(r = 0)),
         axis.text.y = ggplot2::element_text(
           size = 10,
           color = "black",
@@ -372,7 +414,12 @@ pathway_errorbar <-
         legend.text = ggplot2::element_text(size = 8, face = "bold"),
         legend.box.just = "right",
         plot.margin = ggplot2::margin(0, 0.5, 0.5, 0, unit = "cm")
-      ) + ggplot2::coord_cartesian(clip = "off")
+      ) +
+      ggplot2::coord_cartesian(clip = "off") +
+      ggplot2::theme(
+        axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+        plot.margin = ggplot2::unit(c(1, 1, 1, 1), "cm")
+      )
 
     if (ko_to_kegg == TRUE) {
       pathway_class_group_mat <-
@@ -436,9 +483,8 @@ pathway_errorbar <-
       ggplot2::geom_hline(ggplot2::aes(yintercept = 0),
                  linetype = 'dashed',
                  color = 'black') +
-      ggprism::theme_prism() +
-      ggplot2::scale_y_continuous(expand = c(0, 0),
-                         guide = "prism_offset_minor") +
+      ggprism::theme_prism(base_size = 12) +
+      ggplot2::scale_y_continuous(expand = c(0, 0)) +
       ggplot2::theme(
         axis.ticks.y = ggplot2::element_blank(),
         axis.line.y = ggplot2::element_blank(),
@@ -485,7 +531,7 @@ pathway_errorbar <-
           family = "sans"
         ) +
         ggplot2::scale_y_discrete(position = "right") +
-        ggprism::theme_prism() +
+        ggprism::theme_prism(base_size = 12) +
         ggplot2::theme(
           axis.ticks = ggplot2::element_blank(),
           axis.line = ggplot2::element_blank(),
@@ -516,7 +562,7 @@ pathway_errorbar <-
       ) +
       ggplot2::labs(y = "p-value (adjusted)") +
       ggplot2::scale_y_discrete(position = "right") +
-      ggprism::theme_prism() +
+      ggprism::theme_prism(base_size = 12) +
       ggplot2::theme(
         axis.ticks = ggplot2::element_blank(),
         axis.line = ggplot2::element_blank(),

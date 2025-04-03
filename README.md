@@ -3,6 +3,10 @@
 
 # ggpicrust2 vignettes
 
+🌟 **If you find `ggpicrust2` helpful, please consider giving us a star
+on GitHub!** Your support greatly motivates us to improve and maintain
+this project. 🌟
+
 *ggpicrust2* is a comprehensive package designed to provide a seamless
 and intuitive solution for analyzing and interpreting the results of
 PICRUSt2 functional prediction. It offers a wide range of features,
@@ -35,28 +39,35 @@ dataset.
 version](https://www.r-pkg.org/badges/version/ggpicrust2)](https://CRAN.R-project.org/package=ggpicrust2)
 [![Downloads](https://cranlogs.r-pkg.org/badges/grand-total/ggpicrust2)](https://CRAN.R-project.org/package=ggpicrust2)
 [![License:
-MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/license/mit/)
+MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/license/mit)
 
 ## News
 
-Update alert! 🚨 ggpicrust2 Ver1.7.2 is now available. Due to some
-issues with the CRAN server, ggpicrust2 was inadvertently removed from
-CRAN. We are working diligently to resolve this issue. In the meantime,
-you can get the latest version from GitHub by using the following
-command:
+🌟 Introducing `MicrobiomeStat`: Generate Dozens of Pages of Detailed
+Reports in a Single Click
 
-``` r
-devtools::install_github('cafferychen777/ggpicrust2')
-```
+We’re pleased to introduce `MicrobiomeStat`, our latest R package
+tailored for **longitudinal microbiome data** analysis. Designed to work
+efficiently with 16s rRNA microbiome data, `MicrobiomeStat` integrates
+comprehensive statistical tests and clear visualizations, offering a
+practical solution for microbiome researchers.
 
-This update includes major bug fixes and improvements. Don’t miss out!
-😀
+`MicrobiomeStat` aims to simplify the complexities of microbiome data
+analysis. It’s well-suited for various research needs, whether you’re
+dealing with multi-omics data or cross-sectional studies. The package is
+designed to be user-friendly, accommodating both new and experienced
+researchers in the field.
 
-**Join our official Discord channel for more updates and discussions:**
-[ggpicrust2 Discord](https://discord.com/invite/yaR7FEc8)
+For those engaged in microbiome research, `MicrobiomeStat` provides a
+straightforward approach to data analysis. Discover its full
+capabilities and learn more about how it can enhance your research at
+the [MicrobiomeStat Wiki](https://www.microbiomestat.wiki/). You can
+also access the tool directly on GitHub: [MicrobiomeStat GitHub
+Repository](https://github.com/cafferychen777/MicrobiomeStat).
 
-Thank you for your understanding and patience as we work to resolve this
-issue.
+We appreciate your support and interest in our tools and look forward to
+seeing the contributions `MicrobiomeStat` can make to your research
+endeavors.
 
 ## Table of Contents
 
@@ -87,73 +98,70 @@ predicted functional profile analysis and visualization.
 *Bioinformatics*, btad470. [DOI
 link](https://doi.org/10.1093/bioinformatics/btad470)
 
-BibTeX entry: [Download
-here](https://academic.oup.com/bioinformatics/advance-article/doi/10.1093/bioinformatics/btad470/7234609?utm_source=advanceaccess&utm_campaign=bioinformatics&utm_medium=email&login=false)
+BibTeX entry: [Available via DOI](https://doi.org/10.1093/bioinformatics/btad470)
 
 ResearchGate link: [Click
 here](https://www.researchgate.net/publication/372829051_ggpicrust2_an_R_package_for_PICRUSt2_predicted_functional_profile_analysis_and_visualization)
 
-Bioinformatics link: [Click
-here](https://academic.oup.com/bioinformatics/advance-article/doi/10.1093/bioinformatics/btad470/7234609?utm_source=advanceaccess&utm_campaign=bioinformatics&utm_medium=email&login=false)
+Bioinformatics link: [Click here](https://doi.org/10.1093/bioinformatics/btad470)
 
 ## Installation
 
-You can install the stable version of *ggpicrust2* from CRAN with:
+> ⚠️ **Important Notice (December 25, 2024)**: Due to some dependency
+> package issues, `ggpicrust2` has been temporarily removed from CRAN.
+> We are actively working to resolve these issues. However, due to
+> CRAN’s holiday break (December 23, 2024 to January 07, 2025), the
+> resubmission will be delayed until after January 7, 2025.
+>
+> In the meantime, you can install the development version from GitHub:
+
+You can install the development version of *ggpicrust2* from GitHub
+with:
 
 ``` r
-install.packages("ggpicrust2")
-```
-
-To install the latest development version of *ggpicrust2* from GitHub,
-you can use:
-
-``` r
-# Install the devtools package if not already installed
 # install.packages("devtools")
-
-# Install ggpicrust2 from GitHub
 devtools::install_github("cafferychen777/ggpicrust2")
 ```
 
 ## Dependent CRAN Packages
 
-| Package        | Description                                                                                      |
-|----------------|--------------------------------------------------------------------------------------------------|
-| aplot          | Create interactive plots                                                                         |
-| dplyr          | A fast consistent tool for working with data frame like objects both in memory and out of memory |
-| ggplot2        | An implementation of the Grammar of Graphics in R                                                |
-| grid           | A rewrite of the graphics layout capabilities of R                                               |
-| MicrobiomeStat | Statistical analysis of microbiome data                                                          |
-| readr          | Read rectangular data (csv tsv fwf) into R                                                       |
-| stats          | The R Stats Package                                                                              |
-| tibble         | Simple Data Frames                                                                               |
-| tidyr          | Easily tidy data with spread() and gather() functions                                            |
-| ggprism        | Interactive 3D plots with ‘prism’ graphics                                                       |
-| cowplot        | Streamlined Plot Theme and Plot Annotations for ‘ggplot2’                                        |
-| ggforce        | Easily add secondary axes, zooms, and image overlays to ‘ggplot2’                                |
-| ggplotify      | Convert complex plots into ‘grob’ or ‘ggplot’ objects                                            |
-| magrittr       | A Forward-Pipe Operator for R                                                                    |
-| utils          | The R Utils Package                                                                              |
+| Package | Description |
+|----|----|
+| aplot | Create interactive plots |
+| dplyr | A fast consistent tool for working with data frame like objects both in memory and out of memory |
+| ggplot2 | An implementation of the Grammar of Graphics in R |
+| grid | A rewrite of the graphics layout capabilities of R |
+| MicrobiomeStat | Statistical analysis of microbiome data |
+| readr | Read rectangular data (csv tsv fwf) into R |
+| stats | The R Stats Package |
+| tibble | Simple Data Frames |
+| tidyr | Easily tidy data with spread() and gather() functions |
+| ggprism | Interactive 3D plots with ‘prism’ graphics |
+| cowplot | Streamlined Plot Theme and Plot Annotations for ‘ggplot2’ |
+| ggforce | Easily add secondary axes, zooms, and image overlays to ‘ggplot2’ |
+| ggplotify | Convert complex plots into ‘grob’ or ‘ggplot’ objects |
+| magrittr | A Forward-Pipe Operator for R |
+| utils | The R Utils Package |
 
 ## Dependent Bioconductor Packages
 
-| Package              | Description                                                             |
-|----------------------|-------------------------------------------------------------------------|
-| phyloseq             | Handling and analysis of high-throughput microbiome census data         |
-| ALDEx2               | Differential abundance analysis of taxonomic and functional features    |
-| SummarizedExperiment | SummarizedExperiment container for storing data and metadata together   |
-| Biobase              | Base functions for Bioconductor                                         |
-| devtools             | Tools to make developing R packages easier                              |
-| ComplexHeatmap       | Making Complex Heatmaps in R                                            |
-| BiocGenerics         | S4 generic functions for Bioconductor                                   |
-| BiocManager          | Access the Bioconductor Project Package Repositories                    |
-| metagenomeSeq        | Statistical analysis for sparse high-throughput sequencing              |
-| Maaslin2             | Tools for microbiome analysis                                           |
-| edgeR                | Empirical Analysis of Digital Gene Expression Data in R                 |
-| lefser               | R implementation of the LEfSE method for microbiome biomarker discovery |
-| limma                | Linear Models for Microarray and RNA-Seq Data                           |
-| KEGGREST             | R Interface to KEGG REST API                                            |
-| DESeq2               | Differential gene expression analysis using RNA-seq data                |
+| Package | Description |
+|----|----|
+| phyloseq | Handling and analysis of high-throughput microbiome census data |
+| ALDEx2 | Differential abundance analysis of taxonomic and functional features |
+| SummarizedExperiment | SummarizedExperiment container for storing data and metadata together |
+| Biobase | Base functions for Bioconductor |
+| devtools | Tools to make developing R packages easier |
+| ComplexHeatmap | Making Complex Heatmaps in R |
+| BiocGenerics | S4 generic functions for Bioconductor |
+| BiocManager | Access the Bioconductor Project Package Repositories |
+| metagenomeSeq | Statistical analysis for sparse high-throughput sequencing |
+| Maaslin2 | Tools for microbiome analysis |
+| edgeR | Empirical Analysis of Digital Gene Expression Data in R |
+| lefser | R implementation of the LEfSE method for microbiome biomarker discovery |
+| limma | Linear Models for Microarray and RNA-Seq Data |
+| KEGGREST | R Interface to KEGG REST API |
+| DESeq2 | Differential gene expression analysis using RNA-seq data |
 
 ``` r
 if (!requireNamespace("BiocManager", quietly = TRUE))
@@ -658,7 +666,7 @@ Use the fake dataset
 ``` r
 # Create example functional pathway abundance data
 abundance_example <- matrix(rnorm(30), nrow = 3, ncol = 10)
-colnames(abundance_example) <- paste0("Sample", 1:10)
+colnames(kegg_abundance_example) <- paste0("Sample", 1:10)
 rownames(kegg_abundance_example) <- c("PathwayA", "PathwayB", "PathwayC")
 
 # Create example metadata
@@ -831,8 +839,7 @@ the smallest adjusted p-values:
       ko_to_kegg = TRUE,
       p_value_bar = FALSE,
       colors = NULL,
-      x_lab = "pathway_name"
-    )
+      x_lab = "pathway_name")
 
 ### Issue 7: There are no statistically significant biomarkers
 
@@ -882,26 +889,23 @@ significant features.
 
 ## Author’s Other Projects
 
-1.  [MicrobiomeGallery](https://cafferyyang.shinyapps.io/MicrobiomeGallery/):
+1.  [MicrobiomeStat](https://www.microbiomestat.wiki/): The
+    MicrobiomeStat package is a dedicated R tool for exploring
+    longitudinal microbiome data. It also accommodates multi-omics data
+    and cross-sectional studies, valuing the collective efforts within
+    the community. This tool aims to support researchers through their
+    extensive biological inquiries over time, with a spirit of gratitude
+    towards the community’s existing resources and a collaborative ethos
+    for furthering microbiome research.
+
+If you’re interested in helping to test and develop MicrobiomeStat,
+please contact <cafferychen7850@gmail.com>.
+
+2.  [MicrobiomeGallery](https://cafferyyang.shinyapps.io/MicrobiomeGallery/):
     This is a web-based platform currently under development, which aims
     to provide a space for sharing microbiome data visualization code
     and datasets.
 
 ![](https://raw.githubusercontent.com/cafferychen777/ggpicrust2_paper/main/paper_figure/MicrobiomeGallery_preview.jpg)
 
-2.  [MicrobiomeStat](https://www.microbiomestat.wiki/): This is an R
-    package that aims to provide new tools for microbiome analysis. The
-    package is being developed with a particular focus on longitudinal
-    studies, but it also includes tools for handling cross-sectional
-    studies. While its primary purpose is to analyze microbiome data, it
-    also has capabilities for handling multi-omics data. The goal is for
-    MicrobiomeStat to become a widely-used tool for longitudinal
-    analysis of multi-omics data. Please note that both the package and
-    the accompanying wiki are still under development.
-
-If you’re interested in helping to test and develop MicrobiomeStat,
-please contact <cafferychen7850@gmail.com>.
-
 We look forward to sharing more updates as these projects progress.
-
-![](https://cdn.staticaly.com/gh/cafferychen777/ggpicrust2_paper/main/paper_figure/WeChatac562b362dadbf21a03414be3a5d06a5.png)
