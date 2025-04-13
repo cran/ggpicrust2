@@ -20,8 +20,10 @@ test_that("pathway_daa works with basic inputs", {
   result <- pathway_daa(abundance, metadata, "group", daa_method = "ALDEx2")
   expect_s3_class(result, "data.frame")
   expect_true(all(c("feature", "method", "p_values", "adj_method", "p_adjust") %in% colnames(result)))
-  expect_equal(nrow(result), nrow(abundance))
-  expect_equal(result$method[1], "ALDEx2")
+  # ALDEx2 returns two rows per feature (Welch's t test and Wilcoxon rank test)
+  expect_equal(nrow(result), nrow(abundance) * 2)
+  # Check that method names include the specific test type
+  expect_true(grepl("ALDEx2", result$method[1]))
   expect_true(all(!is.na(result$p_values)))
   expect_true(all(result$p_values >= 0 & result$p_values <= 1))
 })
@@ -112,7 +114,13 @@ test_that("pathway_daa methods produce expected results", {
     expect_true(all(c("feature", "method", "p_values") %in% colnames(result)))
 
     # 验证行数正确
-    expect_equal(nrow(result), n_features)
+    if (method == "ALDEx2") {
+      # 对于ALDEx2，结果行数是特征数的两倍
+      expect_equal(nrow(result), n_features * 2)
+    } else {
+      # 对于其他方法，结果行数应该等于特征数
+      expect_equal(nrow(result), n_features)
+    }
 
     # 验证 p 值在有效范围内
     expect_true(all(result$p_values >= 0 & result$p_values <= 1))

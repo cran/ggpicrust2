@@ -36,7 +36,7 @@ to a long format and orders the samples based on the environment information.
 The heatmap is then created using the `ggplot2` library.
 }
 \examples{
-\donttest{
+\dontrun{
 library(ggpicrust2)
 library(ggh4x)
 library(dplyr)

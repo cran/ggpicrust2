@@ -156,7 +156,8 @@ pathway_errorbar <-
     }
 
     # 检查显著性特征的数量
-    sig_features <- sum(daa_results_df$p_adjust < 0.05)
+    # Calculate number of significant features (for reference)
+    # sig_features <- sum(daa_results_df$p_adjust < 0.05)
 
     # Identify pathways with missing annotation
     missing_pathways <- daa_results_df[is.na(daa_results_df$pathway_name), "feature"]
@@ -190,7 +191,7 @@ pathway_errorbar <-
         x_lab <- "description"
       }
 
-      if (is.null(daa_results_df$pathway_name)&is.null(daa_results_df$description)){
+      if (is.null(daa_results_df$pathway_name) && is.null(daa_results_df$description)){
         message(
           "Please utilize the 'pathway_annotation' function to annotate the 'daa_results_df' data frame."
         )
@@ -242,7 +243,7 @@ pathway_errorbar <-
           "daa_results_df %>% filter(p_adjust < 0.05) %>% select(c(\"feature\",\"p_adjust\"))"
         )
       )
-      stop()
+      stop("The number of features with statistical significance exceeds 30, leading to suboptimal visualization.")
     }
 
     if (nrow(daa_results_filtered_sub_df) == 0){
@@ -259,14 +260,27 @@ pathway_errorbar <-
     sub_relative_abundance_mat <- relative_abundance_mat[rownames(relative_abundance_mat) %in% daa_results_filtered_sub_df$feature,]
 
     # Create a matrix for the error bars
+    # Fix mapping error: ensure correct mapping between samples and their experimental groups
+    if (length(Group) != ncol(abundance)) {
+      stop("Length of Group must match number of columns in abundance matrix")
+    }
+    
+    # Create a mapping from sample names to their corresponding groups
+    # Note: We can't directly use the Group vector as its order may not match the column names in sub_relative_abundance_mat
+    sample_to_group_map <- stats::setNames(as.character(Group), colnames(abundance))
+    
+    # Get the correct groups based on the column names in sub_relative_abundance_mat
+    correct_groups <- sample_to_group_map[colnames(sub_relative_abundance_mat)]
+    
+    # Create the error bar matrix using the correctly mapped groups
     error_bar_matrix <- cbind(
       sample = colnames(sub_relative_abundance_mat),
-      group = Group,
+      group = correct_groups,
       t(sub_relative_abundance_mat)
     )
     error_bar_df <- as.data.frame(error_bar_matrix)
 
-    error_bar_df$group <- factor(Group,levels = levels(as.factor(Group)))
+    error_bar_df$group <- factor(correct_groups, levels = levels(as.factor(Group)))
 
       error_bar_pivot_longer_df <- tidyr::pivot_longer(error_bar_df,-c(sample, group))
 
@@ -351,11 +365,14 @@ pathway_errorbar <-
         )
     }
 
-    if (ko_to_kegg == FALSE){
+    if (ko_to_kegg == FALSE) {
+      # 通过 match 函数按特征名匹配
+      matched_indices <- match(
+        error_bar_pivot_longer_tibble_summarised_ordered$name,
+        daa_results_filtered_sub_df$feature
+      )
       error_bar_pivot_longer_tibble_summarised_ordered[, x_lab] <-
-        rep(daa_results_filtered_sub_df[, x_lab], each = length(levels(
-          factor(error_bar_pivot_longer_tibble_summarised_ordered$group)
-        )))
+        daa_results_filtered_sub_df[matched_indices, x_lab]
     }
 
     if (ko_to_kegg == TRUE) {

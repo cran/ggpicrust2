@@ -1,7 +1,7 @@
 Package: ggpicrust2
 Type: Package
 Title: Make 'PICRUSt2' Output Analysis and Visualization Easier
-Version: 2.0.0
+Version: 2.1.2
 Authors@R: c(
     person("Chen", "Yang", email = "cafferychen7850@gmail.com", role = c("aut", "cre")),
     person("Liangliang", "Zhang", email = "lxz716@case.edu ", role = "aut"))
@@ -15,18 +15,20 @@ LazyData: true
 RoxygenNote: 7.3.2
 Imports: aplot, dplyr, ggplot2, grid, ggh4x, readr, tibble, tidyr,
         ggprism, patchwork, ggplotify, magrittr, progress, stats,
-        methods, grDevices, utils
+        methods, grDevices, tidygraph, ggraph, utils
 Depends: R (>= 3.5.0)
 Suggests: Biobase, KEGGREST, ComplexHeatmap, BiocGenerics, knitr,
         rmarkdown, testthat (>= 3.0.0), ALDEx2, DESeq2, edgeR, GGally,
         limma, Maaslin2, metagenomeSeq, MicrobiomeStat,
-        SummarizedExperiment, circlize, lefser
+        SummarizedExperiment, circlize, lefser, fgsea, clusterProfiler,
+        enrichplot, DOSE, pathview, ggVennDiagram, UpSetR, igraph
 Config/testthat/edition: 3
 biocViews: Microbiome, Metagenomics, Software
+VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2025-04-03 05:53:23 UTC; apple
+Packaged: 2025-04-13 05:35:53 UTC; apple
 Author: Chen Yang [aut, cre],
   Liangliang Zhang [aut]
 Maintainer: Chen Yang <cafferychen7850@gmail.com>
 Repository: CRAN
-Date/Publication: 2025-04-03 16:00:05 UTC
+Date/Publication: 2025-04-13 06:00:02 UTC

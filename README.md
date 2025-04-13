@@ -43,8 +43,30 @@ MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.or
 
 ## News
 
-🌟 Introducing `MicrobiomeStat`: Generate Dozens of Pages of Detailed
-Reports in a Single Click
+🌟 **New Feature: Gene Set Enrichment Analysis (GSEA) for PICRUSt2
+Data**
+
+We’re excited to announce the addition of GSEA functionality to the
+ggpicrust2 package! This powerful new feature allows researchers to
+perform Gene Set Enrichment Analysis on PICRUSt2 predicted functional
+profiles, offering a more nuanced understanding of functional
+differences between conditions.
+
+The new GSEA module includes:
+
+- `pathway_gsea()`: Performs GSEA analysis on PICRUSt2 data
+- `visualize_gsea()`: Creates various visualizations including
+  enrichment plots, dot plots, network plots, and heatmaps
+- `compare_gsea_daa()`: Compares GSEA and differential abundance
+  analysis results
+- `gsea_pathway_annotation()`: Annotates GSEA results with pathway
+  information
+
+These new functions complement our existing differential abundance
+analysis tools, providing researchers with multiple approaches to
+analyze functional profiles.
+
+🌟 **Also Check Out: `MicrobiomeStat`**
 
 We’re pleased to introduce `MicrobiomeStat`, our latest R package
 tailored for **longitudinal microbiome data** analysis. Designed to work
@@ -66,7 +88,7 @@ also access the tool directly on GitHub: [MicrobiomeStat GitHub
 Repository](https://github.com/cafferychen777/MicrobiomeStat).
 
 We appreciate your support and interest in our tools and look forward to
-seeing the contributions `MicrobiomeStat` can make to your research
+seeing the contributions our packages can make to your research
 endeavors.
 
 ## Table of Contents
@@ -85,6 +107,10 @@ endeavors.
   - [pathway_heatmap()](#pathway_heatmap)
   - [pathway_pca()](#pathway_pca)
   - [compare_metagenome_results()](#compare_metagenome_results)
+  - [pathway_gsea()](#pathway_gsea)
+  - [visualize_gsea()](#visualize_gsea)
+  - [compare_gsea_daa()](#compare_gsea_daa)
+  - [gsea_pathway_annotation()](#gsea_pathway_annotation)
 - [FAQ](#faq)
 - [Author’s Other Projects](#authors-other-projects)
 
@@ -98,22 +124,16 @@ predicted functional profile analysis and visualization.
 *Bioinformatics*, btad470. [DOI
 link](https://doi.org/10.1093/bioinformatics/btad470)
 
-BibTeX entry: [Available via DOI](https://doi.org/10.1093/bioinformatics/btad470)
+BibTeX entry: [Download
+here](https://doi.org/10.1093/bioinformatics/btad470)
 
 ResearchGate link: [Click
 here](https://www.researchgate.net/publication/372829051_ggpicrust2_an_R_package_for_PICRUSt2_predicted_functional_profile_analysis_and_visualization)
 
-Bioinformatics link: [Click here](https://doi.org/10.1093/bioinformatics/btad470)
+Bioinformatics link: [Click
+here](https://pubmed.ncbi.nlm.nih.gov/37527009/)
 
 ## Installation
-
-> ⚠️ **Important Notice (December 25, 2024)**: Due to some dependency
-> package issues, `ggpicrust2` has been temporarily removed from CRAN.
-> We are actively working to resolve these issues. However, due to
-> CRAN’s holiday break (December 23, 2024 to January 07, 2025), the
-> resubmission will be delayed until after January 7, 2025.
->
-> In the meantime, you can install the development version from GitHub:
 
 You can install the development version of *ggpicrust2* from GitHub
 with:
@@ -125,50 +145,50 @@ devtools::install_github("cafferychen777/ggpicrust2")
 
 ## Dependent CRAN Packages
 
-| Package | Description |
-|----|----|
-| aplot | Create interactive plots |
-| dplyr | A fast consistent tool for working with data frame like objects both in memory and out of memory |
-| ggplot2 | An implementation of the Grammar of Graphics in R |
-| grid | A rewrite of the graphics layout capabilities of R |
-| MicrobiomeStat | Statistical analysis of microbiome data |
-| readr | Read rectangular data (csv tsv fwf) into R |
-| stats | The R Stats Package |
-| tibble | Simple Data Frames |
-| tidyr | Easily tidy data with spread() and gather() functions |
-| ggprism | Interactive 3D plots with ‘prism’ graphics |
-| cowplot | Streamlined Plot Theme and Plot Annotations for ‘ggplot2’ |
-| ggforce | Easily add secondary axes, zooms, and image overlays to ‘ggplot2’ |
-| ggplotify | Convert complex plots into ‘grob’ or ‘ggplot’ objects |
-| magrittr | A Forward-Pipe Operator for R |
-| utils | The R Utils Package |
+| Package        | Description                                                                                      |
+|----------------|--------------------------------------------------------------------------------------------------|
+| aplot          | Create interactive plots                                                                         |
+| dplyr          | A fast consistent tool for working with data frame like objects both in memory and out of memory |
+| ggplot2        | An implementation of the Grammar of Graphics in R                                                |
+| grid           | A rewrite of the graphics layout capabilities of R                                               |
+| MicrobiomeStat | Statistical analysis of microbiome data                                                          |
+| readr          | Read rectangular data (csv tsv fwf) into R                                                       |
+| stats          | The R Stats Package                                                                              |
+| tibble         | Simple Data Frames                                                                               |
+| tidyr          | Easily tidy data with spread() and gather() functions                                            |
+| ggprism        | Interactive 3D plots with ‘prism’ graphics                                                       |
+| cowplot        | Streamlined Plot Theme and Plot Annotations for ‘ggplot2’                                        |
+| ggforce        | Easily add secondary axes, zooms, and image overlays to ‘ggplot2’                                |
+| ggplotify      | Convert complex plots into ‘grob’ or ‘ggplot’ objects                                            |
+| magrittr       | A Forward-Pipe Operator for R                                                                    |
+| utils          | The R Utils Package                                                                              |
 
 ## Dependent Bioconductor Packages
 
-| Package | Description |
-|----|----|
-| phyloseq | Handling and analysis of high-throughput microbiome census data |
-| ALDEx2 | Differential abundance analysis of taxonomic and functional features |
-| SummarizedExperiment | SummarizedExperiment container for storing data and metadata together |
-| Biobase | Base functions for Bioconductor |
-| devtools | Tools to make developing R packages easier |
-| ComplexHeatmap | Making Complex Heatmaps in R |
-| BiocGenerics | S4 generic functions for Bioconductor |
-| BiocManager | Access the Bioconductor Project Package Repositories |
-| metagenomeSeq | Statistical analysis for sparse high-throughput sequencing |
-| Maaslin2 | Tools for microbiome analysis |
-| edgeR | Empirical Analysis of Digital Gene Expression Data in R |
-| lefser | R implementation of the LEfSE method for microbiome biomarker discovery |
-| limma | Linear Models for Microarray and RNA-Seq Data |
-| KEGGREST | R Interface to KEGG REST API |
-| DESeq2 | Differential gene expression analysis using RNA-seq data |
+| Package              | Description                                                             |
+|----------------------|-------------------------------------------------------------------------|
+| phyloseq             | Handling and analysis of high-throughput microbiome census data         |
+| ALDEx2               | Differential abundance analysis of taxonomic and functional features    |
+| SummarizedExperiment | SummarizedExperiment container for storing data and metadata together   |
+| Biobase              | Base functions for Bioconductor                                         |
+| devtools             | Tools to make developing R packages easier                              |
+| ComplexHeatmap       | Making Complex Heatmaps in R                                            |
+| BiocGenerics         | S4 generic functions for Bioconductor                                   |
+| BiocManager          | Access the Bioconductor Project Package Repositories                    |
+| metagenomeSeq        | Statistical analysis for sparse high-throughput sequencing              |
+| Maaslin2             | Tools for microbiome analysis                                           |
+| edgeR                | Empirical Analysis of Digital Gene Expression Data in R                 |
+| lefser               | R implementation of the LEfSE method for microbiome biomarker discovery |
+| limma                | Linear Models for Microarray and RNA-Seq Data                           |
+| KEGGREST             | R Interface to KEGG REST API                                            |
+| DESeq2               | Differential gene expression analysis using RNA-seq data                |
 
 ``` r
 if (!requireNamespace("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
 
-pkgs <- c("phyloseq", "ALDEx2", "SummarizedExperiment", "Biobase", "devtools", 
-          "ComplexHeatmap", "BiocGenerics", "BiocManager", "metagenomeSeq", 
+pkgs <- c("phyloseq", "ALDEx2", "SummarizedExperiment", "Biobase", "devtools",
+          "ComplexHeatmap", "BiocGenerics", "BiocManager", "metagenomeSeq",
           "Maaslin2", "edgeR", "lefser", "limma", "KEGGREST", "DESeq2")
 
 for (pkg in pkgs) {
@@ -310,15 +330,15 @@ library(patchwork)
 
 # Load metadata as a tibble
 # data(metadata)
-metadata <- read_delim("path/to/your/metadata.txt", delim = "\t", escape_double = FALSE, trim_ws = TRUE) 
+metadata <- read_delim("path/to/your/metadata.txt", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
 
 # Load KEGG pathway abundance
 # data(kegg_abundance)
-kegg_abundance <- ko2kegg_abundance("path/to/your/pred_metagenome_unstrat.tsv") 
+kegg_abundance <- ko2kegg_abundance("path/to/your/pred_metagenome_unstrat.tsv")
 
 # Perform pathway differential abundance analysis (DAA) using ALDEx2 method
 # Please change group to "your_group_column" if you are not using example dataset
-daa_results_df <- pathway_daa(abundance = kegg_abundance, metadata = metadata, group = "Environment", daa_method = "ALDEx2", select = NULL, reference = NULL) 
+daa_results_df <- pathway_daa(abundance = kegg_abundance, metadata = metadata, group = "Environment", daa_method = "ALDEx2", select = NULL, reference = NULL)
 
 # Filter results for ALDEx2_Welch's t test method
 # Please check the unique(daa_results_df$method) and choose one
@@ -356,10 +376,10 @@ daa_annotated_sub_method_results_df <- pathway_annotation(pathway = "KO", daa_re
 # Please change column_to_rownames() to the feature column
 # Please change Group to metadata$your_group_column if you are not using example dataset
 p <- pathway_errorbar(abundance = ko_abundance %>% column_to_rownames("#NAME"), daa_results_df = daa_annotated_sub_method_results_df, Group = metadata$Environment, p_values_threshold = 0.05, order = "group",
-select = daa_annotated_sub_method_results_df %>% arrange(p_adjust) %>% slice(1:20) %>% dplyr::select(feature) %>% pull(), 
-ko_to_kegg = FALSE, 
-p_value_bar = TRUE, 
-colors = NULL, 
+select = daa_annotated_sub_method_results_df %>% arrange(p_adjust) %>% slice(1:20) %>% dplyr::select(feature) %>% pull(),
+ko_to_kegg = FALSE,
+p_value_bar = TRUE,
+colors = NULL,
 x_lab = "description")
 
 # Workflow for MetaCyc Pathway and EC
@@ -567,7 +587,7 @@ p <- pathway_errorbar(abundance = kegg_abundance,
            colors = NULL,
            x_lab = "pathway_name")
 
-# If you want to analysis the EC. MetaCyc. KO without conversions. 
+# If you want to analysis the EC. MetaCyc. KO without conversions.
 data("metacyc_abundance")
 data("metadata")
 metacyc_daa_results_df <- pathway_daa(abundance = metacyc_abundance %>% column_to_rownames("pathway"), metadata = metadata, group = "Environment", daa_method = "LinDA")
@@ -636,20 +656,20 @@ annotated_metacyc_daa_results_df <- pathway_annotation(
 )
 
 # Filter features with p < 0.05
-feature_with_p_0.05 <- metacyc_daa_results_df %>% 
+feature_with_p_0.05 <- metacyc_daa_results_df %>%
   filter(p_adjust < 0.05)
 
 # Create the heatmap
 pathway_heatmap(
-  abundance = metacyc_abundance %>% 
+  abundance = metacyc_abundance %>%
     right_join(
       annotated_metacyc_daa_results_df %>% select(all_of(c("feature","description"))),
       by = c("pathway" = "feature")
-    ) %>% 
-    filter(pathway %in% feature_with_p_0.05$feature) %>% 
-    select(-"pathway") %>% 
+    ) %>%
+    filter(pathway %in% feature_with_p_0.05$feature) %>%
+    select(-"pathway") %>%
     column_to_rownames("description"),
-  metadata = metadata, 
+  metadata = metadata,
   group = "Environment"
 )
 ```
@@ -711,6 +731,180 @@ print(results$correlation$cor_matrix)
 print(results$correlation$p_matrix)
 ```
 
+### pathway_gsea()
+
+The `pathway_gsea()` function performs Gene Set Enrichment Analysis
+(GSEA) on PICRUSt2 predicted functional profiles. GSEA is a powerful
+method for identifying enriched pathways between different conditions,
+offering a more nuanced understanding of functional differences compared
+to traditional differential abundance analysis.
+
+``` r
+library(ggpicrust2)
+library(tidyverse)
+
+# Load example data
+data("ko_abundance")
+data("metadata")
+
+# Perform GSEA analysis
+gsea_results <- pathway_gsea(
+  abundance = ko_abundance %>% column_to_rownames("#NAME"),
+  metadata = metadata,
+  group = "Environment",
+  method = "fgsea",    # Can be "fgsea" or "GSEA"
+  rank_method = "log2_ratio",  # Method to calculate ranking metric
+  organism = "ko",    # KEGG organism code
+  minSize = 10,       # Minimum gene set size
+  maxSize = 500,      # Maximum gene set size
+  nperm = 1000        # Number of permutations
+)
+
+# View the results
+head(gsea_results)
+```
+
+### visualize_gsea()
+
+The `visualize_gsea()` function creates various visualizations for GSEA
+results, including enrichment plots, dot plots, network plots, and
+heatmaps.
+
+``` r
+library(ggpicrust2)
+library(tidyverse)
+
+# Load example data and perform GSEA
+data("ko_abundance")
+data("metadata")
+
+gsea_results <- pathway_gsea(
+  abundance = ko_abundance %>% column_to_rownames("#NAME"),
+  metadata = metadata,
+  group = "Environment"
+)
+
+# Create an enrichment plot for a specific pathway
+enrichment_plot <- visualize_gsea(
+  gsea_results = gsea_results,
+  plot_type = "enrichment",
+  pathway_id = gsea_results$pathway_id[1]  # Select the first pathway
+)
+
+# Create a dot plot showing top enriched pathways
+dot_plot <- visualize_gsea(
+  gsea_results = gsea_results,
+  plot_type = "dot",
+  n_pathways = 20,  # Show top 20 pathways
+  sort_by = "NES"   # Sort by Normalized Enrichment Score
+)
+
+# Create a network plot showing pathway relationships
+network_plot <- visualize_gsea(
+  gsea_results = gsea_results,
+  plot_type = "network",
+  n_pathways = 15,
+  network_params = list(
+    similarity_measure = "jaccard",
+    similarity_cutoff = 0.2,
+    layout = "fruchterman",
+    node_color_by = "NES"
+  )
+)
+
+# Create a heatmap showing pathway gene expression
+heatmap_plot <- visualize_gsea(
+  gsea_results = gsea_results,
+  plot_type = "heatmap",
+  abundance = ko_abundance %>% column_to_rownames("#NAME"),
+  metadata = metadata,
+  group = "Environment",
+  n_pathways = 10,
+  heatmap_params = list(
+    cluster_rows = TRUE,
+    cluster_columns = TRUE,
+    show_column_names = TRUE,
+    show_row_names = FALSE
+  )
+)
+```
+
+### compare_gsea_daa()
+
+The `compare_gsea_daa()` function compares results from GSEA and
+differential abundance analysis (DAA) to identify pathways that are
+consistently identified by both methods or uniquely identified by each
+method.
+
+``` r
+library(ggpicrust2)
+library(tidyverse)
+
+# Load example data
+data("ko_abundance")
+data("metadata")
+
+# Perform GSEA analysis
+gsea_results <- pathway_gsea(
+  abundance = ko_abundance %>% column_to_rownames("#NAME"),
+  metadata = metadata,
+  group = "Environment"
+)
+
+# Perform DAA analysis
+daa_results <- pathway_daa(
+  abundance = ko_abundance %>% column_to_rownames("#NAME"),
+  metadata = metadata,
+  group = "Environment",
+  daa_method = "ALDEx2"
+)
+
+# Compare GSEA and DAA results
+comparison <- compare_gsea_daa(
+  gsea_results = gsea_results,
+  daa_results_df = daa_results,
+  gsea_pvalue_cutoff = 0.05,
+  daa_pvalue_cutoff = 0.05,
+  plot_type = "venn"  # Can be "venn", "upset", or "both"
+)
+
+# View the comparison plot
+comparison$plot
+
+# View the overlapping pathways
+head(comparison$overlap)
+```
+
+### gsea_pathway_annotation()
+
+The `gsea_pathway_annotation()` function annotates GSEA results with
+pathway information, including pathway names, descriptions, and
+classifications.
+
+``` r
+library(ggpicrust2)
+library(tidyverse)
+
+# Load example data and perform GSEA
+data("ko_abundance")
+data("metadata")
+
+gsea_results <- pathway_gsea(
+  abundance = ko_abundance %>% column_to_rownames("#NAME"),
+  metadata = metadata,
+  group = "Environment"
+)
+
+# Annotate GSEA results
+annotated_results <- gsea_pathway_annotation(
+  gsea_results = gsea_results,
+  pathway = "KO"
+)
+
+# View the annotated results
+head(annotated_results)
+```
+
 ## Share
 
 [![Twitter](https://img.shields.io/twitter/url?url=https%3A%2F%2Fgithub.com%2Fcafferychen777%2Fggpicrust2&style=social)](https://twitter.com/intent/tweet?url=https%3A%2F%2Fgithub.com%2Fcafferychen777%2Fggpicrust2&text=Check%20out%20this%20awesome%20package%20on%20GitHub%21)
@@ -718,8 +912,6 @@ print(results$correlation$p_matrix)
 [![Facebook](https://img.shields.io/badge/Share_on-Facebook-1877F2?logo=facebook&style=social)](https://www.facebook.com/sharer/sharer.php?u=https%3A%2F%2Fgithub.com%2Fcafferychen777%2Fggpicrust2&quote=Check%20out%20this%20awesome%20package%20on%20GitHub%21)
 
 [![LinkedIn](https://img.shields.io/badge/Share_on-LinkedIn-0077B5?logo=linkedin&style=social)](https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Fgithub.com%2Fcafferychen777%2Fggpicrust2&title=Check%20out%20this%20awesome%20package%20on%20GitHub%21)
-
-[![Reddit](https://img.shields.io/badge/Share_on-Reddit-FF4500?logo=reddit&style=social)](https://www.reddit.com/submit?url=https%3A%2F%2Fgithub.com%2Fcafferychen777%2Fggpicrust2&title=Check%20out%20this%20awesome%20package%20on%20GitHub%21)
 
 ## FAQ
 
@@ -756,7 +948,7 @@ library(patchwork)
 
 You may encounter an error with `guide_train.prism_offset_minor`:
 
-    Error in guide_train.prism_offset_minor(guide, panel_params[[aesthetic]]) : 
+    Error in guide_train.prism_offset_minor(guide, panel_params[[aesthetic]]) :
       No minor breaks exist, guide_prism_offset_minor needs minor breaks to work
 
     Error in get(as.character(FUN)，mode = "function"object envir = envir)
