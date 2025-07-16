@@ -1,6 +1,3 @@
-# Declare global variables to avoid R CMD check notes
-utils::globalVariables(c("set", "NES", "nodes", "weight", "size", "pathway_name"))
-
 #' Visualize GSEA results
 #'
 #' This function creates various visualizations for Gene Set Enrichment Analysis (GSEA) results.
@@ -380,7 +377,7 @@ create_network_plot <- function(gsea_results,
 
   # Create a tidygraph object
   tbl_graph <- tidygraph::as_tbl_graph(graph) %>%
-    tidygraph::activate(nodes) %>%
+    tidygraph::activate("nodes") %>%
     dplyr::mutate(
       name = vertex_attr$name,
       NES = vertex_attr$NES,
@@ -403,9 +400,9 @@ create_network_plot <- function(gsea_results,
 
   # Create ggraph visualization
   p <- ggraph::ggraph(tbl_graph, layout = layout_name) +
-    ggraph::geom_edge_link(ggplot2::aes(width = weight, alpha = weight)) +
-    ggraph::geom_node_point(ggplot2::aes(color = .data[[node_color_by]], size = size)) +
-    ggraph::geom_node_text(ggplot2::aes(label = pathway_name), repel = TRUE, size = 3) +
+    ggraph::geom_edge_link(ggplot2::aes(width = .data$weight, alpha = .data$weight)) +
+    ggraph::geom_node_point(ggplot2::aes(color = .data[[node_color_by]], size = .data$size)) +
+    ggraph::geom_node_text(ggplot2::aes(label = .data$pathway_name), repel = TRUE, size = 3) +
     ggraph::scale_edge_width(range = c(0.1, 2)) +
     ggraph::scale_edge_alpha(range = c(0.1, 0.8)) +
     ggplot2::scale_color_gradient2(

@@ -47,27 +47,56 @@ load_reference_data <- function(pathway_type) {
   if (!pathway_type %in% c("KO", "EC", "MetaCyc")) {
     stop("Invalid pathway option. Please provide one of the following options: 'KO', 'EC', 'MetaCyc'.")
   }
-  
+
   ref_file <- sprintf("%s_reference.RData", pathway_type)
-  ref_path <- system.file("extdata", ref_file, package = "ggpicrust2")
-  
-  if (!file.exists(ref_path)) {
-    stop("Reference data file not found: ", ref_file)
-  }
-  
-  tryCatch({
-    load(ref_path)
-    ref_data <- get(paste0(pathway_type, "_reference"))
-    
-    if (pathway_type == "EC") {
-      message("Note: EC description may appear to be duplicated due to shared EC numbers across different reactions.")
+
+  # First try to load from data/ (lazy loading)
+  ref_data_name <- paste0(pathway_type, "_reference")
+  if (exists(ref_data_name, envir = asNamespace("ggpicrust2"))) {
+    ref_data <- get(ref_data_name, envir = asNamespace("ggpicrust2"))
+
+    # FIX: Standardize MetaCyc column names
+    if (pathway_type == "MetaCyc" && all(c("X1", "X2") %in% colnames(ref_data))) {
+      colnames(ref_data) <- c("id", "description")
     }
-    
-    ref_data
-  },
-  error = function(e) {
-    stop("Error loading reference data: ", e$message)
-  })
+
+    return(ref_data)
+  }
+
+  # If not found in data/, try inst/extdata/
+  ref_path <- system.file("extdata", ref_file, package = "ggpicrust2", mustWork = FALSE)
+
+  if (file.exists(ref_path)) {
+    load(ref_path)
+    ref_data <- get(ref_data_name)
+
+    # FIX: Standardize MetaCyc column names
+    if (pathway_type == "MetaCyc" && all(c("X1", "X2") %in% colnames(ref_data))) {
+      colnames(ref_data) <- c("id", "description")
+    }
+
+    return(ref_data)
+  }
+
+  # If still not found, try loading from the package's installed location
+  ref_path <- system.file("inst/extdata", ref_file, package = "ggpicrust2", mustWork = FALSE)
+  if (file.exists(ref_path)) {
+    load(ref_path)
+    ref_data <- get(ref_data_name)
+
+    # FIX: Standardize MetaCyc column names
+    if (pathway_type == "MetaCyc" && all(c("X1", "X2") %in% colnames(ref_data))) {
+      colnames(ref_data) <- c("id", "description")
+    }
+
+    return(ref_data)
+  }
+
+  # If we reach here, the file was not found in any location
+  stop(sprintf("Reference data file '%s' not found in any standard location.\nPlease ensure the package was installed correctly.", ref_file))
+
+  # This code is unreachable, just for reference
+  ref_data
 }
 
 #' Cache manager for KEGG annotations
@@ -76,31 +105,97 @@ kegg_cache <- new.env(parent = emptyenv())
 
 #' Get KEGG annotation with caching
 #' @param ko_id KO identifier
+#' @param organism Organism code (e.g., 'hsa' for human, 'eco' for E. coli). If NULL, the generic KO entry is retrieved.
 #' @return KEGG annotation
 #' @noRd
-get_kegg_with_cache <- function(ko_id) {
-  if (!exists(ko_id, envir = kegg_cache)) {
+get_kegg_with_cache <- function(ko_id, organism = NULL) {
+  # Create a cache key that includes the organism if specified
+  cache_key <- if (!is.null(organism)) {
+    paste0(organism, ":", ko_id)
+  } else {
+    ko_id
+  }
+  
+  if (!exists(cache_key, envir = kegg_cache)) {
     # Add request interval
     Sys.sleep(0.1)  # 100ms delay to avoid too frequent requests
     
-    result <- with_retry({
-      KEGGREST::keggGet(ko_id)
-    })
-    
-    # Handle error objects
-    if (inherits(result, "kegg_error")) {
-      result$ko_id <- ko_id
-      return(result)
-    }
-    
-    if (!is.null(result)) {
-      assign(ko_id, result, envir = kegg_cache)
+    # Different query strategy based on whether organism is specified
+    if (!is.null(organism)) {
+      # For organism-specific queries, we need a two-step process:
+      # 1. Find organism-specific genes linked to this KO
+      # 2. Get pathway information for those genes
+      
+      # Step 1: Find organism-specific genes
+      organism_genes <- tryCatch({
+        # Use keggLink to find genes in the specified organism that are linked to this KO
+        links <- KEGGREST::keggLink(organism, ko_id)
+        links
+      }, error = function(e) {
+        log_message(sprintf("Error finding %s genes for %s: %s", organism, ko_id, e$message), "WARN")
+        NULL
+      })
+      
+      # If we found organism-specific genes
+      if (!is.null(organism_genes) && length(organism_genes) > 0) {
+        # Step 2: Get pathway information for the first gene (as a representative)
+        # We use the first gene as most genes linked to the same KO participate in the same pathways
+        gene_id <- names(organism_genes)[1]
+        
+        result <- with_retry({
+          KEGGREST::keggGet(gene_id)
+        })
+        
+        # If successful, store in cache
+        if (!is.null(result) && !inherits(result, "kegg_error")) {
+          assign(cache_key, result, envir = kegg_cache)
+        } else {
+          # If we couldn't get gene info, fall back to generic KO query
+          log_message(sprintf("Could not get info for %s gene %s, falling back to generic KO query", 
+                             organism, gene_id), "INFO")
+          
+          result <- with_retry({
+            KEGGREST::keggGet(ko_id)
+          })
+          
+          if (!is.null(result) && !inherits(result, "kegg_error")) {
+            assign(cache_key, result, envir = kegg_cache)
+          }
+        }
+      } else {
+        # If no organism-specific genes found, fall back to generic KO query
+        log_message(sprintf("No %s genes found for %s, falling back to generic KO query", 
+                           organism, ko_id), "INFO")
+        
+        result <- with_retry({
+          KEGGREST::keggGet(ko_id)
+        })
+        
+        if (!is.null(result) && !inherits(result, "kegg_error")) {
+          assign(cache_key, result, envir = kegg_cache)
+        }
+      }
+    } else {
+      # For generic KO queries, directly query KEGG
+      result <- with_retry({
+        KEGGREST::keggGet(ko_id)
+      })
+      
+      # Handle error objects
+      if (inherits(result, "kegg_error")) {
+        result$ko_id <- ko_id
+        return(result)
+      }
+      
+      if (!is.null(result)) {
+        assign(cache_key, result, envir = kegg_cache)
+      }
     }
   }
   
   # If exists in cache, retrieve it
-  if (exists(ko_id, envir = kegg_cache)) {
-    return(get(ko_id, envir = kegg_cache, inherits = FALSE))
+  if (exists(cache_key, envir = kegg_cache)) {
+    return(get(cache_key, envir = kegg_cache, inherits = FALSE))
   }
   
   # If not in cache, return NULL
@@ -221,9 +316,10 @@ validate_inputs <- function(file, pathway, daa_results_df, ko_to_kegg) {
 
 #' Process KEGG annotations with improved error handling and caching
 #' @param df Data frame with features to annotate
+#' @param organism KEGG organism code (e.g., 'hsa' for human)
 #' @return Annotated data frame
 #' @noRd
-process_kegg_annotations <- function(df) {
+process_kegg_annotations <- function(df, organism = NULL) {
   if (nrow(df) == 0) {
     stop("Empty data frame provided for KEGG annotation")
   }
@@ -261,7 +357,7 @@ process_kegg_annotations <- function(df) {
     
     # Get KEGG annotation
     entry <- tryCatch({
-      result <- get_kegg_with_cache(ko_id)
+      result <- get_kegg_with_cache(ko_id, organism)
       
       # Handle error objects
       if (inherits(result, "kegg_error")) {
@@ -398,6 +494,7 @@ annotate_pathways <- function(data, pathway_type, ref_data) {
 #' @param pathway A character string, the type of pathway to annotate. Options are "KO", "EC", or "MetaCyc".
 #' @param daa_results_df A data frame, the output from `pathway_daa` function.
 #' @param ko_to_kegg A logical, decide if convert KO abundance to KEGG pathway abundance. Default is FALSE. Set to TRUE when using the function for the second use case.
+#' @param organism A character string specifying the KEGG organism code (e.g., 'hsa' for human, 'eco' for E. coli). Default is NULL, which retrieves generic KO information not specific to any organism. Only used when ko_to_kegg is TRUE.
 #'
 #' @return A data frame with annotated pathway information. 
 #' If using the function for the first use case, the output data frame will include the following columns:
@@ -414,31 +511,30 @@ annotate_pathways <- function(data, pathway_type, ref_data) {
 #'   \item \code{pathway_class}: The class of the KEGG pathway.
 #'   \item \code{pathway_map}: The KEGG pathway map ID.
 #' }
+#' 
+#' When \code{ko_to_kegg} is TRUE, the function queries the KEGG database for pathway information. By default (organism = NULL), it retrieves generic KO information that is not specific to any organism. If you are interested in organism-specific pathway information, you can specify the KEGG organism code using the \code{organism} parameter.
 #'
 #' @examples
-#' \donttest{
+#' \dontrun{
 #' # Example 1: Annotate pathways from PICRUSt2 output file
 #' pathway_annotation(file = "path/to/picrust2_output.tsv",
 #'                               pathway = "KO")
-#'
+#' }
+#' 
+#' \dontrun{
 #' # Example 2: Annotate pathways from pathway_daa output
-#' # and converting KO abundance to KEGG pathway abundance
+#' # Assuming you have daa_results from pathway_daa function
 #' daa_results <- pathway_daa(abundance, metadata, group = "Group")
 #' annotated_results <- pathway_annotation(pathway = "KO",
 #'                               daa_results_df = daa_results,
-#'                               ko_to_kegg = TRUE)
-#'
-#' # Example 3: Annotate EC pathways
-#' ec_results <- pathway_daa(abundance, metadata, group = "Group")
-#' annotated_ec <- pathway_annotation(pathway = "EC",
-#'                               daa_results_df = ec_results,
-#'                               ko_to_kegg = TRUE)
+#'                               ko_to_kegg = FALSE)
 #' }
 #' @export
 pathway_annotation <- function(file = NULL,
                              pathway = NULL,
                              daa_results_df = NULL,
-                             ko_to_kegg = FALSE) {
+                             ko_to_kegg = FALSE,
+                             organism = NULL) {
   
   # Input validation
   if (is.null(file) && is.null(daa_results_df)) {
@@ -463,9 +559,14 @@ pathway_annotation <- function(file = NULL,
       return(annotate_pathways(daa_results_df, pathway, ref_data))
     } else {
       message("KO to KEGG is set to TRUE. Proceeding with KEGG pathway annotations...")
+      if (!is.null(organism)) {
+        message("Using organism code: ", organism, " for species-specific pathway information.")
+      } else {
+        message("No organism specified. Using generic KO information across all species.")
+      }
       message("We are connecting to the KEGG database to get the latest results, please wait patiently.")
       message("Processing pathways in chunks...")
-      return(process_kegg_annotations(daa_results_df))
+      return(process_kegg_annotations(daa_results_df, organism))
     }
   }
 }

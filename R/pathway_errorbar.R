@@ -11,6 +11,8 @@
 #' @param p_value_bar A logical parameter indicating whether to display a bar showing the p-value threshold for significance. If TRUE, the bar will be displayed.
 #' @param colors A vector of colors to be used to represent the groups in the figure. Each color corresponds to a group.
 #' @param x_lab A character string to be used as the x-axis label in the figure. The default value is "description" for KOs'descriptions and "pathway_name" for KEGG pathway names.
+#' @param log2_fold_change_color A character string specifying the color for log2 fold change bars. Default is "#87ceeb" (light blue).
+#' @param max_features A numeric parameter specifying the maximum number of features to display before issuing a warning. Default is 30. Set to a higher value to display more features, or Inf to disable the limit entirely.
 #' @importFrom stats sd
 #' @return A ggplot2 plot showing the error bar plot of the differential abundance analysis results for the functional pathways.
 #' The plot visualizes the differential abundance results of a specific differential abundance analysis method. The corresponding dataframe contains the results used to create the plot.
@@ -72,7 +74,8 @@
 #'   ko_to_kegg = TRUE,
 #'   p_value_bar = TRUE,
 #'   colors = NULL,
-#'   x_lab = "pathway_name"
+#'   x_lab = "pathway_name",
+#'   log2_fold_change_color = "#FF5733" # Custom color for log2 fold change bars
 #' )
 #'
 #' # Example 2: Analyzing EC, MetaCyc, KO without conversions
@@ -118,7 +121,8 @@
 #'   ko_to_kegg = FALSE,
 #'   p_value_bar = TRUE,
 #'   colors = NULL,
-#'   x_lab = "description"
+#'   x_lab = "description",
+#'   log2_fold_change_color = "#006400" # Dark green for log2 fold change bars
 #' )
 #' }
 utils::globalVariables(c("group", "name", "value", "feature", "negative_log10_p", "group_nonsense", "nonsense", "pathway_class", "p_adjust", "log_2_fold_change", "transform_sample_counts", "column_to_rownames", "txtProgressBar", "setTxtProgressBar", "utils"))
@@ -132,8 +136,10 @@ pathway_errorbar <-
            select = NULL,
            p_value_bar = TRUE,
            colors = NULL,
-           x_lab = NULL) {
-    # 在函数开始处添加更完整的输入验证
+           x_lab = NULL,
+           log2_fold_change_color = "#87ceeb",
+           max_features = 30) {
+    # Add more complete input validation at the beginning of the function
     if(!is.matrix(abundance) && !is.data.frame(abundance)) {
       stop("'abundance' must be a matrix or data frame")
     }
@@ -142,7 +148,7 @@ pathway_errorbar <-
       stop("'daa_results_df' must be a data frame")
     }
 
-    # 检查必要的列
+    # Check required columns
     required_cols <- c("feature", "method", "group1", "group2", "p_adjust")
     missing_cols <- setdiff(required_cols, colnames(daa_results_df))
     if(length(missing_cols) > 0) {
@@ -150,12 +156,12 @@ pathway_errorbar <-
            paste(missing_cols, collapse = ", "))
     }
 
-    # 在函数开始处添加数据验证
+    # Add data validation at the beginning of the function
     if (length(Group) != ncol(abundance)) {
       stop("Length of Group must match number of columns in abundance matrix")
     }
 
-    # 检查显著性特征的数量
+    # Check the number of significant features
     # Calculate number of significant features (for reference)
     # sig_features <- sum(daa_results_df$p_adjust < 0.05)
 
@@ -232,18 +238,19 @@ pathway_errorbar <-
       daa_results_filtered_sub_df <- daa_results_filtered_df
     }
 
-    if (nrow(daa_results_filtered_sub_df) > 30) {
+    if (nrow(daa_results_filtered_sub_df) > max_features) {
       message(
         paste0(
-          "The number of features with statistical significance exceeds 30, leading to suboptimal visualization. ",
-          "Please use 'select' to reduce the number of features.\n",
+          "The number of features with statistical significance exceeds ", max_features, ", which may lead to suboptimal visualization. ",
+          "Please use 'select' to reduce the number of features or increase the 'max_features' parameter.\n",
           "Currently, you have these features: ",
           paste(paste0('"', daa_results_filtered_sub_df$feature, '"'), collapse = ", "), ".\n",
           "You can find the statistically significant features with the following command:\n",
           "daa_results_df %>% filter(p_adjust < 0.05) %>% select(c(\"feature\",\"p_adjust\"))"
         )
       )
-      stop("The number of features with statistical significance exceeds 30, leading to suboptimal visualization.")
+      warning("The number of features with statistical significance exceeds ", max_features, ", which may lead to suboptimal visualization. Setting max_features=Inf will disable this warning.")
+      # Changed from stop() to warning() to allow users to proceed with visualization if desired
     }
 
     if (nrow(daa_results_filtered_sub_df) == 0){
@@ -312,18 +319,30 @@ pathway_errorbar <-
         order <- order(daa_results_filtered_sub_df$feature)
       },
       "group" = {
+        # Initialize pro column with default value 1
         daa_results_filtered_sub_df$pro <- 1
+        
         for (i in levels(error_bar_pivot_longer_tibble_summarised$name)) {
+          # Get subset for current feature
           error_bar_pivot_longer_tibble_summarised_sub <-
-            error_bar_pivot_longer_tibble_summarised[error_bar_pivot_longer_tibble_summarised$name ==
-                                                       i,]
+            error_bar_pivot_longer_tibble_summarised[error_bar_pivot_longer_tibble_summarised$name == i,]
+          
+          # Find group with maximum mean abundance
           pro_group <-
             error_bar_pivot_longer_tibble_summarised_sub[error_bar_pivot_longer_tibble_summarised_sub$mean ==
-                                                           max(error_bar_pivot_longer_tibble_summarised_sub$mean),]$group
+                                                            max(error_bar_pivot_longer_tibble_summarised_sub$mean),]$group
           pro_group <- as.vector(pro_group)
-          daa_results_filtered_sub_df[daa_results_filtered_sub_df$feature ==
-                                        i,]$pro <- pro_group
+          
+          # Find indices of rows matching the current feature, excluding NA values
+          idx <- which(daa_results_filtered_sub_df$feature == i & !is.na(daa_results_filtered_sub_df$feature))
+          
+          # Only assign values if valid indices exist
+          if (length(idx) > 0) {
+            daa_results_filtered_sub_df$pro[idx] <- pro_group
+          }
         }
+        
+        # Order by group and p-value
         order <-
           order(daa_results_filtered_sub_df$pro,
                 daa_results_filtered_sub_df$p_adjust)
@@ -366,7 +385,7 @@ pathway_errorbar <-
     }
 
     if (ko_to_kegg == FALSE) {
-      # 通过 match 函数按特征名匹配
+      # Match by feature name using the match function
       matched_indices <- match(
         error_bar_pivot_longer_tibble_summarised_ordered$name,
         daa_results_filtered_sub_df$feature
@@ -442,7 +461,7 @@ pathway_errorbar <-
       pathway_class_group_mat <-
         daa_results_filtered_sub_df$pathway_class %>%
         table() %>%
-        data.frame() %>% column_to_rownames(".")
+        data.frame() %>% tibble::column_to_rownames(".")
       pathway_class_group <- data.frame(.= unique(daa_results_filtered_sub_df$pathway_class),Freq = pathway_class_group_mat[unique(daa_results_filtered_sub_df$pathway_class),])
       start <-
         c(1, rev(pathway_class_group$Freq)[1:(length(pathway_class_group$Freq) - 1)]) %>%
@@ -495,8 +514,8 @@ pathway_errorbar <-
                width = 0.8) +
       ggplot2::labs(y = "log2 fold change", x = NULL) +
       GGally::geom_stripped_cols() +
-      ggplot2::scale_fill_manual(values = "#87ceeb") +
-      ggplot2::scale_color_manual(values = "#87ceeb") +
+      ggplot2::scale_fill_manual(values = log2_fold_change_color) +
+      ggplot2::scale_color_manual(values = log2_fold_change_color) +
       ggplot2::geom_hline(ggplot2::aes(yintercept = 0),
                  linetype = 'dashed',
                  color = 'black') +
@@ -562,16 +581,18 @@ pathway_errorbar <-
           legend.position = "non"
         )
     }
-    daa_results_filtered_sub_df$p_adjust <-
-      as.character(daa_results_filtered_sub_df$p_adjust)
+
+    # Helper function to format p-values for display
+    format_p_value <- function(p) {
+      ifelse(p < 0.001, sprintf("%.1e", p), sprintf("%.3f", p))
+    }
+
     daa_results_filtered_sub_df$unique <-
       nrow(daa_results_filtered_sub_df) - seq_len(nrow(daa_results_filtered_sub_df)) + 1
-    daa_results_filtered_sub_df$p_adjust <-
-      substr(daa_results_filtered_sub_df$p_adjust, 1, 5)
     p_annotation <- daa_results_filtered_sub_df %>%
       ggplot2::ggplot(ggplot2::aes(group_nonsense, p_adjust)) +
       ggplot2::geom_text(
-        ggplot2::aes(group_nonsense, unique, label = p_adjust),
+        ggplot2::aes(group_nonsense, unique, label = format_p_value(p_adjust)),
         size = 3.5,
         color = "black",
         fontface = "bold",

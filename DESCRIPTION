@@ -1,7 +1,7 @@
 Package: ggpicrust2
 Type: Package
 Title: Make 'PICRUSt2' Output Analysis and Visualization Easier
-Version: 2.1.2
+Version: 2.3.2
 Authors@R: c(
     person("Chen", "Yang", email = "cafferychen7850@gmail.com", role = c("aut", "cre")),
     person("Liangliang", "Zhang", email = "lxz716@case.edu ", role = "aut"))
@@ -26,9 +26,9 @@ Config/testthat/edition: 3
 biocViews: Microbiome, Metagenomics, Software
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2025-04-13 05:35:53 UTC; apple
+Packaged: 2025-07-15 23:33:02 UTC; apple
 Author: Chen Yang [aut, cre],
   Liangliang Zhang [aut]
 Maintainer: Chen Yang <cafferychen7850@gmail.com>
 Repository: CRAN
-Date/Publication: 2025-04-13 06:00:02 UTC
+Date/Publication: 2025-07-16 00:00:03 UTC
