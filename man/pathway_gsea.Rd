@@ -15,7 +15,8 @@ pathway_gsea(
   min_size = 10,
   max_size = 500,
   p.adjust = "BH",
-  seed = 42
+  seed = 42,
+  go_category = "BP"
 )
 }
 \arguments{
@@ -40,6 +41,8 @@ pathway_gsea(
 \item{p.adjust}{A character string specifying the p-value adjustment method}
 
 \item{seed}{An integer specifying the random seed for reproducibility}
+
+\item{go_category}{A character string specifying the GO category: "BP" (Biological Process), "MF" (Molecular Function), or "CC" (Cellular Component). Only used when pathway_type = "GO". Default is "BP".}
 }
 \value{
 A data frame containing GSEA results

@@ -4,12 +4,14 @@
 \alias{prepare_gene_sets}
 \title{Prepare gene sets for GSEA}
 \usage{
-prepare_gene_sets(pathway_type = "KEGG", organism = "ko")
+prepare_gene_sets(pathway_type = "KEGG", organism = "ko", go_category = "BP")
 }
 \arguments{
 \item{pathway_type}{A character string specifying the pathway type: "KEGG", "MetaCyc", or "GO"}
 
 \item{organism}{A character string specifying the organism (only relevant for KEGG and GO)}
+
+\item{go_category}{A character string specifying the GO category: "BP" (Biological Process), "MF" (Molecular Function), "CC" (Cellular Component), or "all"}
 }
 \value{
 A list of pathway gene sets
@@ -17,4 +19,3 @@ A list of pathway gene sets
 \description{
 Prepare gene sets for GSEA
 }
-\keyword{internal}

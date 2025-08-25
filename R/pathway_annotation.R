@@ -55,8 +55,16 @@ load_reference_data <- function(pathway_type) {
   if (exists(ref_data_name, envir = asNamespace("ggpicrust2"))) {
     ref_data <- get(ref_data_name, envir = asNamespace("ggpicrust2"))
 
-    # FIX: Standardize MetaCyc column names
+    # FIX: Standardize column names for MetaCyc, EC, and KO
     if (pathway_type == "MetaCyc" && all(c("X1", "X2") %in% colnames(ref_data))) {
+      colnames(ref_data) <- c("id", "description")
+    }
+    if (pathway_type == "EC" && all(c("V1", "V2") %in% colnames(ref_data))) {
+      colnames(ref_data) <- c("id", "description")
+    }
+    if (pathway_type == "KO" && all(c("KO", "KoDescription") %in% colnames(ref_data))) {
+      # For KO data, map KO -> id and KoDescription -> description
+      ref_data <- ref_data[, c("KO", "KoDescription")]
       colnames(ref_data) <- c("id", "description")
     }
 
@@ -70,8 +78,16 @@ load_reference_data <- function(pathway_type) {
     load(ref_path)
     ref_data <- get(ref_data_name)
 
-    # FIX: Standardize MetaCyc column names
+    # FIX: Standardize column names for MetaCyc, EC, and KO
     if (pathway_type == "MetaCyc" && all(c("X1", "X2") %in% colnames(ref_data))) {
+      colnames(ref_data) <- c("id", "description")
+    }
+    if (pathway_type == "EC" && all(c("V1", "V2") %in% colnames(ref_data))) {
+      colnames(ref_data) <- c("id", "description")
+    }
+    if (pathway_type == "KO" && all(c("KO", "KoDescription") %in% colnames(ref_data))) {
+      # For KO data, map KO -> id and KoDescription -> description
+      ref_data <- ref_data[, c("KO", "KoDescription")]
       colnames(ref_data) <- c("id", "description")
     }
 
@@ -84,8 +100,16 @@ load_reference_data <- function(pathway_type) {
     load(ref_path)
     ref_data <- get(ref_data_name)
 
-    # FIX: Standardize MetaCyc column names
+    # FIX: Standardize column names for MetaCyc, EC, and KO
     if (pathway_type == "MetaCyc" && all(c("X1", "X2") %in% colnames(ref_data))) {
+      colnames(ref_data) <- c("id", "description")
+    }
+    if (pathway_type == "EC" && all(c("V1", "V2") %in% colnames(ref_data))) {
+      colnames(ref_data) <- c("id", "description")
+    }
+    if (pathway_type == "KO" && all(c("KO", "KoDescription") %in% colnames(ref_data))) {
+      # For KO data, map KO -> id and KoDescription -> description
+      ref_data <- ref_data[, c("KO", "KoDescription")]
       colnames(ref_data) <- c("id", "description")
     }
 
@@ -324,15 +348,27 @@ process_kegg_annotations <- function(df, organism = NULL) {
     stop("Empty data frame provided for KEGG annotation")
   }
   
+  # Filter for significant pathways
   filtered_df <- df[df$p_adjust < 0.05, ]
+  
+  # Handle case when no significant pathways are found
   if (nrow(filtered_df) == 0) {
-    stop(
+    warning(
       "No statistically significant biomarkers found (p_adjust < 0.05).\n",
-      "Consider using a less stringent threshold or reviewing your data."
+      "Returning results with empty annotation columns for visualization purposes.\n",
+      "Consider using a less stringent threshold if significant results are expected.",
+      call. = FALSE
     )
+    
+    # Return original data with empty annotation columns for compatibility
+    new_cols <- c("pathway_name", "pathway_description", "pathway_class", "pathway_map")
+    df[new_cols] <- NA_character_
+    
+    log_message("No significant pathways found. Returning data with empty annotation columns.", "WARN")
+    return(df)
   }
   
-  # Initialize new columns
+  # Initialize new columns for significant pathways
   new_cols <- c("pathway_name", "pathway_description", "pathway_class", "pathway_map")
   filtered_df[new_cols] <- NA_character_
   
@@ -392,9 +428,34 @@ process_kegg_annotations <- function(df, organism = NULL) {
     # Safely extract data, check if fields exist
     if (!is.null(entry) && length(entry) > 0) {
       filtered_df$pathway_name[i] <- safe_extract(entry[[1]], "NAME", 1)
-      filtered_df$pathway_description[i] <- if("DESCRIPTION" %in% names(entry[[1]])) safe_extract(entry[[1]], "DESCRIPTION", 1) else NA_character_
-      filtered_df$pathway_class[i] <- if("CLASS" %in% names(entry[[1]])) safe_extract(entry[[1]], "CLASS", 1) else NA_character_
-      filtered_df$pathway_map[i] <- if("PATHWAY_MAP" %in% names(entry[[1]])) safe_extract(entry[[1]], "PATHWAY_MAP", 1) else NA_character_
+
+      # Use PATHWAY field for pathway_description (contains pathway names)
+      if("PATHWAY" %in% names(entry[[1]]) && !is.null(entry[[1]][["PATHWAY"]]) && length(entry[[1]][["PATHWAY"]]) > 0) {
+        # Extract pathway names (values) and combine them
+        pathway_names <- as.character(entry[[1]][["PATHWAY"]])
+        filtered_df$pathway_description[i] <- paste(pathway_names, collapse = "; ")
+      } else {
+        filtered_df$pathway_description[i] <- NA_character_
+      }
+
+      # Use BRITE field for pathway_class (contains functional classification)
+      if("BRITE" %in% names(entry[[1]]) && !is.null(entry[[1]][["BRITE"]]) && length(entry[[1]][["BRITE"]]) > 0) {
+        # Extract first few BRITE classifications
+        brite_classes <- as.character(entry[[1]][["BRITE"]])
+        # Take first 3 classifications to avoid overly long strings
+        filtered_df$pathway_class[i] <- paste(head(brite_classes, 3), collapse = "; ")
+      } else {
+        filtered_df$pathway_class[i] <- NA_character_
+      }
+
+      # Use PATHWAY field for pathway_map (extract map IDs)
+      if("PATHWAY" %in% names(entry[[1]]) && !is.null(entry[[1]][["PATHWAY"]]) && length(entry[[1]][["PATHWAY"]]) > 0) {
+        # Extract pathway map IDs (names)
+        pathway_maps <- names(entry[[1]][["PATHWAY"]])
+        filtered_df$pathway_map[i] <- paste(pathway_maps, collapse = "; ")
+      } else {
+        filtered_df$pathway_map[i] <- NA_character_
+      }
     }
   }
   
@@ -456,8 +517,22 @@ annotate_pathways <- function(data, pathway_type, ref_data) {
   }
   
   # Match features with reference data
-  matches <- match(features, ref_data$id)
-  
+  # For EC pathways, try both with and without EC: prefix
+  if (pathway_type == "EC") {
+    # First try direct match
+    matches <- match(features, ref_data$id)
+
+    # For unmatched features, try adding EC: prefix
+    unmatched <- is.na(matches)
+    if (any(unmatched)) {
+      features_with_prefix <- paste0("EC:", features[unmatched])
+      matches_with_prefix <- match(features_with_prefix, ref_data$id)
+      matches[unmatched] <- matches_with_prefix
+    }
+  } else {
+    matches <- match(features, ref_data$id)
+  }
+
   # Create description column
   descriptions <- rep(NA_character_, length(features))
   valid_matches <- !is.na(matches)

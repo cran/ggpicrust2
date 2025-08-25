@@ -3,6 +3,8 @@
 #' This is a demonstration dataset from the ggpicrust2 package, representing the output of PICRUSt2.
 #' Each row represents a KO (KEGG Orthology) group, and each column corresponds to a sample.
 #'
+#' @docType data
+#' @name ko_abundance
 #' @format A data frame where rownames are KO groups and column names include #NAME and individual sample names, such as:
 #' "#NAME", "SRR11393730", "SRR11393731", "SRR11393732", "SRR11393733", "SRR11393734", "SRR11393735", "SRR11393736",
 #' "SRR11393737", "SRR11393738", "SRR11393739", "SRR11393740", "SRR11393741", "SRR11393742", "SRR11393743",

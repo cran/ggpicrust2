@@ -1,6 +1,8 @@
 #' Visualize GSEA results
 #'
 #' This function creates various visualizations for Gene Set Enrichment Analysis (GSEA) results.
+#' It automatically detects whether pathway names are available (from gsea_pathway_annotation())
+#' and uses them for better readability, falling back to pathway IDs if names are not available.
 #'
 #' @param gsea_results A data frame containing GSEA results from the pathway_gsea function
 #' @param plot_type A character string specifying the visualization type: "enrichment_plot", "dotplot", "barplot", "network", or "heatmap"
@@ -12,6 +14,9 @@
 #' @param group A character string specifying the column name in metadata that contains the grouping variable (required for heatmap visualization)
 #' @param network_params A list of parameters for network visualization
 #' @param heatmap_params A list of parameters for heatmap visualization
+#' @param pathway_label_column A character string specifying which column to use for pathway labels.
+#'   If NULL (default), the function will automatically use 'pathway_name' if available, otherwise 'pathway_id'.
+#'   This allows for custom labeling when using annotated GSEA results.
 #'
 #' @return A ggplot2 object or ComplexHeatmap object
 #' @export
@@ -36,21 +41,29 @@
 #'   method = "fgsea"
 #' )
 #'
-#' # Create enrichment plot
+#' # Create enrichment plot with pathway IDs (default)
 #' visualize_gsea(gsea_results, plot_type = "enrichment_plot", n_pathways = 10)
 #'
-#' # Create dotplot
-#' visualize_gsea(gsea_results, plot_type = "dotplot", n_pathways = 20)
+#' # Annotate results for better pathway names
+#' annotated_results <- gsea_pathway_annotation(
+#'   gsea_results = gsea_results,
+#'   pathway_type = "KEGG"
+#' )
 #'
-#' # Create barplot
-#' visualize_gsea(gsea_results, plot_type = "barplot", n_pathways = 15)
+#' # Create plots with readable pathway names
+#' visualize_gsea(annotated_results, plot_type = "dotplot", n_pathways = 20)
+#' visualize_gsea(annotated_results, plot_type = "barplot", n_pathways = 15)
 #'
-#' # Create network plot
-#' visualize_gsea(gsea_results, plot_type = "network", n_pathways = 15)
+#' # Create network plot with custom labels
+#' visualize_gsea(annotated_results, plot_type = "network", n_pathways = 15)
+#'
+#' # Use custom column for labels (if available)
+#' visualize_gsea(annotated_results, plot_type = "barplot",
+#'                pathway_label_column = "pathway_name", n_pathways = 10)
 #'
 #' # Create heatmap
 #' visualize_gsea(
-#'   gsea_results,
+#'   annotated_results,
 #'   plot_type = "heatmap",
 #'   n_pathways = 15,
 #'   abundance = abundance_data,
@@ -67,7 +80,8 @@ visualize_gsea <- function(gsea_results,
                           metadata = NULL,
                           group = NULL,
                           network_params = list(),
-                          heatmap_params = list()) {
+                          heatmap_params = list(),
+                          pathway_label_column = NULL) {
 
   # Input validation
   if (!is.data.frame(gsea_results)) {
@@ -85,6 +99,18 @@ visualize_gsea <- function(gsea_results,
   if (!is.null(colors) && !is.character(colors)) {
     stop("colors must be NULL or a character vector")
   }
+
+  if (!is.null(pathway_label_column) && !is.character(pathway_label_column)) {
+    stop("pathway_label_column must be NULL or a character string")
+  }
+
+  # Validate n_pathways parameter
+  if (!is.numeric(n_pathways) || length(n_pathways) != 1 || is.na(n_pathways)) {
+    stop("n_pathways must be a single numeric value")
+  }
+  
+  # Convert to integer if it's not already
+  n_pathways <- as.integer(n_pathways)
 
   # Check if required packages are installed
   if (plot_type == "enrichment_plot" || plot_type == "dotplot" || plot_type == "barplot") {
@@ -115,6 +141,31 @@ visualize_gsea <- function(gsea_results,
     colors <- c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "#FFFF33", "#A65628", "#F781BF", "#999999")
   }
 
+  # Determine which column to use for pathway labels
+  if (!is.null(pathway_label_column)) {
+    # User specified a custom column
+    if (!pathway_label_column %in% colnames(gsea_results)) {
+      stop(paste("Specified pathway_label_column '", pathway_label_column, "' not found in gsea_results", sep = ""))
+    }
+    pathway_label_col <- pathway_label_column
+  } else {
+    # Auto-detect: prefer pathway_name if available, otherwise use pathway_id
+    if ("pathway_name" %in% colnames(gsea_results)) {
+      pathway_label_col <- "pathway_name"
+    } else if ("pathway_id" %in% colnames(gsea_results)) {
+      pathway_label_col <- "pathway_id"
+    } else {
+      # Check if we have any results first
+      if (nrow(gsea_results) == 0) {
+        return(create_empty_plot(plot_type))
+      }
+      stop("GSEA results must contain either 'pathway_name' or 'pathway_id' column")
+    }
+  }
+
+  # Create a standardized pathway_label column for consistent use throughout the function
+  gsea_results$pathway_label <- gsea_results[[pathway_label_col]]
+
   # Sort results based on the specified criterion
   if (sort_by == "NES") {
     gsea_results <- gsea_results[order(abs(gsea_results$NES), decreasing = TRUE), ]
@@ -124,9 +175,24 @@ visualize_gsea <- function(gsea_results,
     gsea_results <- gsea_results[order(gsea_results$p.adjust), ]
   }
 
+  # Handle boundary conditions for n_pathways
+  if (n_pathways <= 0) {
+    return(create_empty_plot(plot_type))
+  }
+  
+  # Check if we have any results after filtering
+  if (nrow(gsea_results) == 0) {
+    return(create_empty_plot(plot_type))
+  }
+  
   # Limit to top n_pathways
   if (nrow(gsea_results) > n_pathways) {
     gsea_results <- gsea_results[1:n_pathways, ]
+  }
+  
+  # Double-check after limiting (should not happen, but be safe)
+  if (nrow(gsea_results) == 0) {
+    return(create_empty_plot(plot_type))
   }
 
   # Create visualization based on plot_type
@@ -147,7 +213,7 @@ visualize_gsea <- function(gsea_results,
     gsea_results <- gsea_results[order(gsea_results$NES), ]
 
     # Create a basic barplot of NES values
-    p <- ggplot2::ggplot(gsea_results, ggplot2::aes(x = reorder(.data$pathway_name, .data$NES), y = .data$NES, fill = .data$p.adjust)) +
+    p <- ggplot2::ggplot(gsea_results, ggplot2::aes(x = reorder(.data$pathway_label, .data$NES), y = .data$NES, fill = .data$p.adjust)) +
       ggplot2::geom_bar(stat = "identity") +
       ggplot2::coord_flip() +
       ggplot2::scale_fill_gradient(low = "red", high = "blue") +
@@ -166,11 +232,11 @@ visualize_gsea <- function(gsea_results,
   } else if (plot_type == "dotplot") {
     # Create dotplot
     # Sort by NES
-    gsea_results$pathway_name <- factor(gsea_results$pathway_name,
-                                      levels = gsea_results$pathway_name[order(gsea_results$NES)])
+    gsea_results$pathway_label <- factor(gsea_results$pathway_label,
+                                      levels = gsea_results$pathway_label[order(gsea_results$NES)])
 
     p <- ggplot2::ggplot(gsea_results,
-                       ggplot2::aes(x = .data$NES, y = .data$pathway_name, color = .data$p.adjust, size = .data$size)) +
+                       ggplot2::aes(x = .data$NES, y = .data$pathway_label, color = .data$p.adjust, size = .data$size)) +
       ggplot2::geom_point() +
       ggplot2::scale_color_gradient(low = "red", high = "blue") +
       ggplot2::labs(
@@ -189,14 +255,14 @@ visualize_gsea <- function(gsea_results,
   } else if (plot_type == "barplot") {
     # Create barplot
     # Sort by NES
-    gsea_results$pathway_name <- factor(gsea_results$pathway_name,
-                                      levels = gsea_results$pathway_name[order(gsea_results$NES)])
+    gsea_results$pathway_label <- factor(gsea_results$pathway_label,
+                                      levels = gsea_results$pathway_label[order(gsea_results$NES)])
 
     # Add color based on NES direction
     gsea_results$direction <- ifelse(gsea_results$NES > 0, "Positive", "Negative")
 
     p <- ggplot2::ggplot(gsea_results,
-                       ggplot2::aes(x = .data$pathway_name, y = .data$NES, fill = .data$direction)) +
+                       ggplot2::aes(x = .data$pathway_label, y = .data$NES, fill = .data$direction)) +
       ggplot2::geom_bar(stat = "identity") +
       ggplot2::scale_fill_manual(values = c("Positive" = "#E41A1C", "Negative" = "#377EB8")) +
       ggplot2::coord_flip() +
@@ -265,6 +331,30 @@ visualize_gsea <- function(gsea_results,
   return(p)
 }
 
+#' Create empty plot for edge cases
+#'
+#' @param plot_type A character string specifying the visualization type
+#'
+#' @return A ggplot2 object
+#' @keywords internal
+create_empty_plot <- function(plot_type) {
+  # Create consistent empty plots for each visualization type
+  base_plot <- ggplot2::ggplot() +
+    ggplot2::theme_void() +
+    ggplot2::labs(title = paste("No pathways to display for", plot_type))
+  
+  if (plot_type %in% c("network", "heatmap")) {
+    # Special handling for complex plot types
+    base_plot + ggplot2::annotate("text", x = 0, y = 0, 
+                                  label = "No significant pathways found",
+                                  size = 4, color = "gray50")
+  } else {
+    base_plot + ggplot2::annotate("text", x = 0, y = 0, 
+                                  label = "No pathways to display",
+                                  size = 4, color = "gray50")
+  }
+}
+
 #' Create network visualization of GSEA results
 #'
 #' @param gsea_results A data frame containing GSEA results from the pathway_gsea function
@@ -291,9 +381,24 @@ create_network_plot <- function(gsea_results,
     stop("Packages 'igraph' and 'ggraph' are required for network plots. Please install them.")
   }
 
+  # Handle boundary conditions for n_pathways
+  if (n_pathways <= 0) {
+    return(create_empty_plot("network"))
+  }
+  
+  # Check if we have any results
+  if (nrow(gsea_results) == 0) {
+    return(create_empty_plot("network"))
+  }
+  
   # Limit number of pathways
   if (nrow(gsea_results) > n_pathways) {
     gsea_results <- gsea_results[order(gsea_results$p.adjust), ][1:n_pathways, ]
+  }
+  
+  # Double-check after limiting
+  if (nrow(gsea_results) == 0) {
+    return(create_empty_plot("network"))
   }
 
   # Extract leading edge genes
@@ -338,12 +443,7 @@ create_network_plot <- function(gsea_results,
 
   # Check if there are any connections after applying cutoff
   if (sum(similarity_matrix) == 0) {
-    # Create a simple plot with a message
-    p <- ggplot2::ggplot() +
-      ggplot2::annotate("text", x = 0, y = 0,
-                      label = "No significant connections found with current similarity cutoff") +
-      ggplot2::theme_void()
-    return(p)
+    return(create_empty_plot("network"))
   }
 
   # Create graph object
@@ -356,12 +456,7 @@ create_network_plot <- function(gsea_results,
 
   # Check if graph is empty
   if (igraph::vcount(graph) == 0) {
-    # Create a simple plot with a message
-    p <- ggplot2::ggplot() +
-      ggplot2::annotate("text", x = 0, y = 0,
-                      label = "No nodes found in the network") +
-      ggplot2::theme_void()
-    return(p)
+    return(create_empty_plot("network"))
   }
 
   # Add node attributes
@@ -371,7 +466,7 @@ create_network_plot <- function(gsea_results,
     pvalue = gsea_results$pvalue[match(pathway_ids, gsea_results$pathway_id)],
     p.adjust = gsea_results$p.adjust[match(pathway_ids, gsea_results$pathway_id)],
     size = gsea_results$size[match(pathway_ids, gsea_results$pathway_id)],
-    pathway_name = gsea_results$pathway_name[match(pathway_ids, gsea_results$pathway_id)],
+    pathway_label = gsea_results$pathway_label[match(pathway_ids, gsea_results$pathway_id)],
     stringsAsFactors = FALSE
   )
 
@@ -384,7 +479,7 @@ create_network_plot <- function(gsea_results,
       pvalue = vertex_attr$pvalue,
       p.adjust = vertex_attr$p.adjust,
       size = vertex_attr$size,
-      pathway_name = vertex_attr$pathway_name
+      pathway_label = vertex_attr$pathway_label
     )
 
   # Select layout algorithm
@@ -402,7 +497,7 @@ create_network_plot <- function(gsea_results,
   p <- ggraph::ggraph(tbl_graph, layout = layout_name) +
     ggraph::geom_edge_link(ggplot2::aes(width = .data$weight, alpha = .data$weight)) +
     ggraph::geom_node_point(ggplot2::aes(color = .data[[node_color_by]], size = .data$size)) +
-    ggraph::geom_node_text(ggplot2::aes(label = .data$pathway_name), repel = TRUE, size = 3) +
+    ggraph::geom_node_text(ggplot2::aes(label = .data$pathway_label), repel = TRUE, size = 3) +
     ggraph::scale_edge_width(range = c(0.1, 2)) +
     ggraph::scale_edge_alpha(range = c(0.1, 0.8)) +
     ggplot2::scale_color_gradient2(
@@ -449,14 +544,63 @@ create_heatmap_plot <- function(gsea_results,
     stop("Packages 'ComplexHeatmap' and 'circlize' are required for heatmap plots. Please install them.")
   }
 
+  # Handle boundary conditions for n_pathways
+  if (n_pathways <= 0) {
+    # For heatmap, return a special empty heatmap object
+    return(ComplexHeatmap::Heatmap(
+      matrix(0, nrow = 1, ncol = 1),
+      name = "Empty",
+      show_row_names = FALSE,
+      show_column_names = FALSE,
+      row_title = "No pathways to display",
+      column_title = "No data available"
+    ))
+  }
+  
+  # Check if we have any results
+  if (nrow(gsea_results) == 0) {
+    return(ComplexHeatmap::Heatmap(
+      matrix(0, nrow = 1, ncol = 1),
+      name = "Empty",
+      show_row_names = FALSE,
+      show_column_names = FALSE,
+      row_title = "No pathways found",
+      column_title = "No data available"
+    ))
+  }
+  
   # Limit number of pathways
   if (nrow(gsea_results) > n_pathways) {
     gsea_results <- gsea_results[order(gsea_results$p.adjust), ][1:n_pathways, ]
+  }
+  
+  # Double-check after limiting
+  if (nrow(gsea_results) == 0) {
+    return(ComplexHeatmap::Heatmap(
+      matrix(0, nrow = 1, ncol = 1),
+      name = "Empty",
+      show_row_names = FALSE,
+      show_column_names = FALSE,
+      row_title = "No pathways after filtering",
+      column_title = "No data available"
+    ))
   }
 
   # Extract leading edge genes
   leading_edges <- lapply(strsplit(gsea_results$leading_edge, ";"), function(x) x[x != ""])
   names(leading_edges) <- gsea_results$pathway_id
+  
+  # Check if any leading edges are empty
+  if (all(lengths(leading_edges) == 0)) {
+    return(ComplexHeatmap::Heatmap(
+      matrix(0, nrow = 1, ncol = 1),
+      name = "Empty",
+      show_row_names = FALSE,
+      show_column_names = FALSE,
+      row_title = "No leading edge genes found",
+      column_title = "No gene expression data"
+    ))
+  }
 
   # Create heatmap data matrix
   # For each pathway, calculate the average expression of leading edge genes

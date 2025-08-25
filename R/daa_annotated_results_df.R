@@ -3,6 +3,8 @@
 #' This is a result dataset after processing 'kegg_abundance' through
 #' the 'pathway_daa' with the LinDA method and further annotation with 'pathway_annotation'.
 #'
+#' @docType data
+#' @name daa_annotated_results_df
 #' @format A data frame with 10 variables:
 #' \describe{
 #'   \item{adj_method}{Method used for adjusting p-values.}

@@ -163,15 +163,26 @@ ggpicrust2 <- function(file = NULL,
     num_significant_biomarkers <- sum(as.numeric(daa_results_df$p_adjust <= 0.05))
 
     if (num_significant_biomarkers == 0) {
-      # If no biomarkers have p-values less than or equal to 0.05, issue a warning and suggest user to check FAQ
-      stop("Notice: There are no statistically significant biomarkers in the dataset. This is not an error, but it might indicate that the data do not contain any biomarkers passing the set significance threshold (p<=0.05). You may refer to the tutorial's FAQ for further help and suggestions.")
+      # If no biomarkers have p-values less than or equal to 0.05, issue a warning but continue processing
+      warning(
+        "No statistically significant biomarkers found in the dataset (p_adjust <= 0.05). ",
+        "This is not an error, but indicates that the data do not contain biomarkers passing the significance threshold. ",
+        "The analysis will continue with empty annotation columns for visualization purposes. ",
+        "You may refer to the tutorial's FAQ for further help and suggestions.",
+        call. = FALSE
+      )
+      message("Notice: Continuing analysis with non-significant results for visualization...")
     } else {
       message(paste("Success: Found", num_significant_biomarkers, "statistically significant biomarker(s) in the dataset."))
     }
 
     message("Annotating pathways...\n")
-    daa_results_df  <-
-      pathway_annotation(daa_results_df = daa_results_df, ko_to_kegg = TRUE)
+    daa_results_df <-
+      pathway_annotation(
+        pathway = pathway,
+        ko_to_kegg = ko_to_kegg,
+        daa_results_df = daa_results_df
+      )
     j <- 1
     message("Creating pathway error bar plots...\n")
     for (i in unique(daa_results_df$method)) {
@@ -213,6 +224,16 @@ ggpicrust2 <- function(file = NULL,
       data
     }
     abundance <- as.data.frame(abundance)
+    
+    # PICRUSt 2.6.2兼容性处理：清理KO ID格式
+    ko_ids <- abundance[, 1]
+    has_ko_prefix <- any(grepl("^ko:", ko_ids))
+    if (has_ko_prefix) {
+      message("Detected PICRUSt 2.6.2 format with 'ko:' prefix. Applying compatibility fix...")
+      abundance[, 1] <- gsub("^ko:", "", abundance[, 1])
+      message(sprintf("Cleaned %d KO IDs by removing 'ko:' prefix", sum(grepl("^ko:", ko_ids))))
+    }
+    
     rownames(abundance) <- abundance[, 1]
     abundance <- abundance[, -1]
     message("Performing pathway differential abundance analysis...\n")
@@ -252,12 +273,20 @@ ggpicrust2 <- function(file = NULL,
           select = select,
           x_lab = x_lab
         )
-      # Create a sublist
-      sub_list <-
-        list(plot = combination_bar_plot, results = daa_sub_method_results_df)
+      
+      # Check if pathway_errorbar returned NULL (no data for plotting)
+      if (is.null(combination_bar_plot)) {
+        message(sprintf("Plot %d skipped due to insufficient annotation data for method: %s\n", j, i))
+        # Still create a sublist with results but no plot
+        sub_list <- list(plot = NULL, results = daa_sub_method_results_df)
+      } else {
+        # Create a sublist with both plot and results
+        sub_list <- list(plot = combination_bar_plot, results = daa_sub_method_results_df)
+        message(sprintf("Plot %d created.\n", j))
+      }
+      
       # Add sublists to the main list
       plot_result_list[[j]] <- sub_list
-      message(sprintf("Plot %d created.\n", j))
       j <- j + 1
     }
     message("ggpicrust2 analysis completed.\n")

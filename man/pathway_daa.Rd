@@ -2,8 +2,11 @@
 % Please edit documentation in R/pathway_daa.R
 \name{pathway_daa}
 \alias{pathway_daa}
+\alias{calculate_abundance_stats}
 \title{Differential Abundance Analysis for Predicted Functional Pathways}
 \usage{
+calculate_abundance_stats(abundance, metadata, group, features, group1, group2)
+
 pathway_daa(
   abundance,
   metadata,
@@ -12,20 +15,22 @@ pathway_daa(
   select = NULL,
   p.adjust = "BH",
   reference = NULL,
+  include_abundance_stats = FALSE,
   ...
 )
 }
 \arguments{
-\item{abundance}{A data frame or matrix containing predicted functional pathway abundance,
-with pathways/features as rows and samples as columns.
-The column names should match the sample names in metadata.
-Values should be counts or abundance measurements.}
+\item{abundance}{A matrix or data frame with features as rows and samples as columns}
 
-\item{metadata}{A data frame or tibble containing sample information.
-Must include a 'sample' column with sample identifiers matching the column names in abundance data.}
+\item{metadata}{A data frame containing sample information}
 
-\item{group}{Character string specifying the column name in metadata that contains group information
-for differential abundance analysis.}
+\item{group}{Character string specifying the group column name in metadata}
+
+\item{features}{Character vector of feature names to calculate statistics for}
+
+\item{group1}{Character string specifying the first group name}
+
+\item{group2}{Character string specifying the second group name}
 
 \item{daa_method}{Character string specifying the method for differential abundance analysis.
 Available choices are:
@@ -58,6 +63,11 @@ Choices are:
 \item{reference}{Character string specifying the reference level for the group comparison.
 If NULL (default), the first level is used as reference.}
 
+\item{include_abundance_stats}{Logical value indicating whether to include
+abundance statistics (mean relative abundance, standard deviation,
+and log2 fold change) in the output. Default is FALSE for backward
+compatibility.}
+
 \item{...}{Additional arguments passed to the specific DAA method}
 }
 \value{
@@ -76,12 +86,36 @@ the following columns:
   \item \code{adj_method}: Method used for p-value adjustment
 }
 
-Some methods may provide additional columns, such as \code{log2FoldChange} for effect size information.
+When \code{include_abundance_stats = TRUE}, the following additional columns
+are included:
+\itemize{
+  \item \code{mean_rel_abundance_group1}: Mean relative abundance for group1
+  \item \code{sd_rel_abundance_group1}: Standard deviation of relative
+        abundance for group1
+  \item \code{mean_rel_abundance_group2}: Mean relative abundance for group2
+  \item \code{sd_rel_abundance_group2}: Standard deviation of relative
+        abundance for group2
+  \item \code{log2_fold_change}: Log2 fold change (group2/group1)
+}
+
+Some methods may provide additional columns, such as \code{log2FoldChange}
+for effect size information.
+
+A data frame with columns:
+  \item{feature}{Feature identifier}
+  \item{mean_rel_abundance_group1}{Mean relative abundance for group1}
+  \item{sd_rel_abundance_group1}{Standard deviation of relative abundance for group1}
+  \item{mean_rel_abundance_group2}{Mean relative abundance for group2}
+  \item{sd_rel_abundance_group2}{Standard deviation of relative abundance for group2}
+  \item{log2_fold_change}{Log2 fold change (group2/group1)}
 }
 \description{
 Performs differential abundance analysis on predicted functional pathway data using various statistical methods.
 This function supports multiple methods for analyzing differences in pathway abundance between groups,
 including popular approaches like ALDEx2, DESeq2, edgeR, and others.
+}
+\details{
+Differential Abundance Analysis for Predicted Functional Pathways
 }
 \examples{
 \donttest{
@@ -153,4 +187,10 @@ subset_results <- pathway_daa(abundance, metadata, "group",
   \item Maaslin2: Mallick et al. (2021) Multivariable Association Discovery in Population-scale
         Meta-omics Studies.
 }
+
+Helper function to calculate abundance statistics for differential analysis
+
+This function calculates mean relative abundance, standard deviation, and log2 fold change
+for each feature between two groups.
 }
+\keyword{internal}

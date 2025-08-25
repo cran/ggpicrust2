@@ -3,6 +3,8 @@
 #' A dataset derived from 'ko_abundance' by the function 'ko2kegg_abundance' in the ggpicrust2 package.
 #' Each row corresponds to a KEGG pathway, and each column corresponds to a sample.
 #'
+#' @docType data
+#' @name kegg_abundance
 #' @format A data frame where rownames are KEGG pathways and column names are individual sample names, including:
 #' "SRR11393730", "SRR11393731", "SRR11393732", "SRR11393733", "SRR11393734", "SRR11393735", "SRR11393736",
 #' "SRR11393737", "SRR11393738", "SRR11393739", "SRR11393740", "SRR11393741", "SRR11393742", "SRR11393743",

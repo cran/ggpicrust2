@@ -3,6 +3,8 @@
 #' This dataset is the result of processing 'kegg_abundance' through the 'LinDA' method in the 'pathway_daa' function.
 #' It includes information about the feature, groups compared, p values, and method used.
 #'
+#' @docType data
+#' @name daa_results_df
 #' @format A data frame with columns:
 #' \describe{
 #'   \item{adj_method}{Method used for p-value adjustment.}

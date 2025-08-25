@@ -3,8 +3,10 @@ NULL
 
 #' Differential Abundance Analysis for Predicted Functional Pathways
 #'
-#' @description
-#' Performs differential abundance analysis on predicted functional pathway data using various statistical methods.
+#' @name pathway_daa
+#' @title Differential Abundance Analysis for Predicted Functional Pathways
+#'
+#' @description Performs differential abundance analysis on predicted functional pathway data using various statistical methods.
 #' This function supports multiple methods for analyzing differences in pathway abundance between groups,
 #' including popular approaches like ALDEx2, DESeq2, edgeR, and others.
 #'
@@ -66,8 +68,21 @@ NULL
 #'   \item \code{p_adjust}: Adjusted p-values
 #'   \item \code{adj_method}: Method used for p-value adjustment
 #' }
-#' 
-#' Some methods may provide additional columns, such as \code{log2FoldChange} for effect size information.
+#'
+#' When \code{include_abundance_stats = TRUE}, the following additional columns
+#' are included:
+#' \itemize{
+#'   \item \code{mean_rel_abundance_group1}: Mean relative abundance for group1
+#'   \item \code{sd_rel_abundance_group1}: Standard deviation of relative
+#'         abundance for group1
+#'   \item \code{mean_rel_abundance_group2}: Mean relative abundance for group2
+#'   \item \code{sd_rel_abundance_group2}: Standard deviation of relative
+#'         abundance for group2
+#'   \item \code{log2_fold_change}: Log2 fold change (group2/group1)
+#' }
+#'
+#' Some methods may provide additional columns, such as \code{log2FoldChange}
+#' for effect size information.
 #'
 #' @examples
 #' \donttest{
@@ -139,9 +154,165 @@ NULL
 #'         Meta-omics Studies.
 #' }
 #'
+#' Helper function to calculate abundance statistics for differential analysis
+#'
+#' This function calculates mean relative abundance, standard deviation, and log2 fold change
+#' for each feature between two groups.
+#'
+#' @param abundance A matrix or data frame with features as rows and samples as columns
+#' @param metadata A data frame containing sample information
+#' @param group Character string specifying the group column name in metadata
+#' @param features Character vector of feature names to calculate statistics for
+#' @param group1 Character string specifying the first group name
+#' @param group2 Character string specifying the second group name
+#'
+#' @return A data frame with columns:
+#'   \item{feature}{Feature identifier}
+#'   \item{mean_rel_abundance_group1}{Mean relative abundance for group1}
+#'   \item{sd_rel_abundance_group1}{Standard deviation of relative abundance for group1}
+#'   \item{mean_rel_abundance_group2}{Mean relative abundance for group2}
+#'   \item{sd_rel_abundance_group2}{Standard deviation of relative abundance for group2}
+#'   \item{log2_fold_change}{Log2 fold change (group2/group1)}
+#'
+#' @keywords internal
+calculate_abundance_stats <- function(abundance, metadata, group, features, group1, group2) {
+  # Validate inputs
+  if (!is.matrix(abundance) && !is.data.frame(abundance)) {
+    stop("'abundance' must be a matrix or data frame")
+  }
+
+  if (!is.data.frame(metadata)) {
+    stop("'metadata' must be a data frame")
+  }
+
+  if (!group %in% colnames(metadata)) {
+    stop("Group column '", group, "' not found in metadata")
+  }
+
+  # Convert abundance to matrix if needed
+  abundance_mat <- as.matrix(abundance)
+
+  # Find the sample column that matches abundance column names
+  sample_col <- NULL
+  potential_sample_cols <- c("sample", "Sample", "sample_name", "Sample_Name", "sample_id", "Sample_ID")
+
+  # First try standard column names
+  for (col in potential_sample_cols) {
+    if (col %in% colnames(metadata)) {
+      if (all(colnames(abundance_mat) %in% metadata[[col]]) ||
+          all(metadata[[col]] %in% colnames(abundance_mat))) {
+        sample_col <- col
+        break
+      }
+    }
+  }
+
+  # If no standard column found, try all columns
+  if (is.null(sample_col)) {
+    for (col in colnames(metadata)) {
+      if (all(colnames(abundance_mat) %in% metadata[[col]]) ||
+          all(metadata[[col]] %in% colnames(abundance_mat))) {
+        sample_col <- col
+        break
+      }
+    }
+  }
+
+  if (is.null(sample_col)) {
+    # Try to match by rownames if no sample column found
+    if (all(colnames(abundance_mat) %in% rownames(metadata))) {
+      metadata$sample <- rownames(metadata)
+      sample_col <- "sample"
+    } else {
+      stop("Cannot find matching sample identifiers between abundance and metadata")
+    }
+  }
+
+  # Filter metadata to match abundance samples
+  metadata_filtered <- metadata[metadata[[sample_col]] %in% colnames(abundance_mat), ]
+
+  # Filter abundance to match metadata samples
+  abundance_filtered <- abundance_mat[, colnames(abundance_mat) %in% metadata_filtered[[sample_col]], drop = FALSE]
+
+  # Reorder to ensure matching
+  sample_order <- match(colnames(abundance_filtered), metadata_filtered[[sample_col]])
+  metadata_ordered <- metadata_filtered[sample_order, ]
+
+  # Get group assignments
+  group_assignments <- metadata_ordered[[group]]
+
+  # Filter for the two groups of interest
+  group1_samples <- colnames(abundance_filtered)[group_assignments == group1]
+  group2_samples <- colnames(abundance_filtered)[group_assignments == group2]
+
+  if (length(group1_samples) == 0) {
+    stop("No samples found for group1: ", group1)
+  }
+  if (length(group2_samples) == 0) {
+    stop("No samples found for group2: ", group2)
+  }
+
+  # Convert to relative abundance
+  relative_abundance <- apply(abundance_filtered, 2, function(x) x / sum(x))
+
+  # Filter for specified features
+  if (!is.null(features)) {
+    features_available <- intersect(features, rownames(relative_abundance))
+    if (length(features_available) == 0) {
+      stop("None of the specified features found in abundance data")
+    }
+    relative_abundance <- relative_abundance[features_available, , drop = FALSE]
+  }
+
+  # Calculate statistics for each feature
+  results <- data.frame(
+    feature = rownames(relative_abundance),
+    mean_rel_abundance_group1 = NA_real_,
+    sd_rel_abundance_group1 = NA_real_,
+    mean_rel_abundance_group2 = NA_real_,
+    sd_rel_abundance_group2 = NA_real_,
+    log2_fold_change = NA_real_,
+    stringsAsFactors = FALSE
+  )
+
+  for (i in seq_len(nrow(relative_abundance))) {
+    feature_name <- rownames(relative_abundance)[i]
+
+    # Get abundance values for each group
+    group1_values <- relative_abundance[i, group1_samples, drop = TRUE]
+    group2_values <- relative_abundance[i, group2_samples, drop = TRUE]
+
+    # Calculate means and standard deviations
+    mean1 <- mean(group1_values, na.rm = TRUE)
+    sd1 <- stats::sd(group1_values, na.rm = TRUE)
+    mean2 <- mean(group2_values, na.rm = TRUE)
+    sd2 <- stats::sd(group2_values, na.rm = TRUE)
+
+    # Calculate log2 fold change (group2/group1)
+    # Add small pseudocount to avoid log(0)
+    pseudocount <- 1e-10
+    log2_fc <- log2((mean2 + pseudocount) / (mean1 + pseudocount))
+
+    # Store results
+    results[i, "mean_rel_abundance_group1"] <- mean1
+    results[i, "sd_rel_abundance_group1"] <- sd1
+    results[i, "mean_rel_abundance_group2"] <- mean2
+    results[i, "sd_rel_abundance_group2"] <- sd2
+    results[i, "log2_fold_change"] <- log2_fc
+  }
+
+  return(results)
+}
+
+#' @param include_abundance_stats Logical value indicating whether to include
+#'        abundance statistics (mean relative abundance, standard deviation,
+#'        and log2 fold change) in the output. Default is FALSE for backward
+#'        compatibility.
+#'
 #' @export
 pathway_daa <- function(abundance, metadata, group, daa_method = "ALDEx2",
-                       select = NULL, p.adjust = "BH", reference = NULL, ...) {
+                       select = NULL, p.adjust = "BH", reference = NULL,
+                       include_abundance_stats = FALSE, ...) {
   # Check if the requested DAA method package is available
   method_packages <- list(
     "ALDEx2" = "ALDEx2",
@@ -149,7 +320,8 @@ pathway_daa <- function(abundance, metadata, group, daa_method = "ALDEx2",
     "edgeR" = "edgeR",
     "limma voom" = "limma",
     "metagenomeSeq" = "metagenomeSeq",
-    "Maaslin2" = "Maaslin2"
+    "Maaslin2" = "Maaslin2",
+    "Lefser" = "lefser"
   )
   
   if (daa_method %in% names(method_packages)) {
@@ -249,6 +421,10 @@ pathway_daa <- function(abundance, metadata, group, daa_method = "ALDEx2",
 
   # Prepare data
   abundance_mat <- as.matrix(abundance)
+
+  # Validate abundance data for PICRUSt compatibility
+  validate_abundance_data(abundance_mat, daa_method)
+
   Group <- factor(metadata[[group]])
 
   # Ensure factor levels only include groups present in the data
@@ -271,12 +447,111 @@ pathway_daa <- function(abundance, metadata, group, daa_method = "ALDEx2",
   )
 
   # Add multiple testing correction
-  if (!is.null(result) && "p_values" %in% colnames(result)) {
+  if (!is.null(result) && "p_values" %in% colnames(result) && nrow(result) > 0) {
     result$p_adjust <- p.adjust(result$p_values, method = p.adjust)
     result$adj_method <- p.adjust
   }
 
+  # Add abundance statistics if requested
+  if (include_abundance_stats && !is.null(result) && nrow(result) > 0) {
+    # Check if we have the required columns for abundance stats
+    if (all(c("feature", "group1", "group2") %in% colnames(result))) {
+      tryCatch({
+        # Get unique group pairs for calculation
+        unique_comparisons <- unique(result[, c("group1", "group2")])
+
+        # Calculate abundance stats for each unique comparison
+        all_abundance_stats <- data.frame()
+
+        for (i in seq_len(nrow(unique_comparisons))) {
+          group1_name <- unique_comparisons$group1[i]
+          group2_name <- unique_comparisons$group2[i]
+
+          # Get features for this comparison
+          comparison_features <- result$feature[
+            result$group1 == group1_name & result$group2 == group2_name
+          ]
+
+          if (length(comparison_features) > 0) {
+            abundance_stats <- calculate_abundance_stats(
+              abundance = abundance_mat,
+              metadata = metadata,
+              group = group,
+              features = comparison_features,
+              group1 = group1_name,
+              group2 = group2_name
+            )
+
+            # Add group information for merging
+            abundance_stats$group1 <- group1_name
+            abundance_stats$group2 <- group2_name
+
+            all_abundance_stats <- rbind(all_abundance_stats, abundance_stats)
+          }
+        }
+
+        # Merge abundance stats with results
+        if (nrow(all_abundance_stats) > 0) {
+          result <- merge(
+            result,
+            all_abundance_stats,
+            by = c("feature", "group1", "group2"),
+            all.x = TRUE
+          )
+        }
+      }, error = function(e) {
+        warning("Failed to calculate abundance statistics: ", e$message)
+      })
+    } else {
+      warning("Cannot calculate abundance statistics: required columns (feature, group1, group2) not found in results")
+    }
+  }
+
   return(result)
+}
+
+#' Validate abundance data for PICRUSt compatibility
+#' @param abundance_mat Abundance matrix
+#' @param daa_method DAA method being used
+#' @keywords internal
+validate_abundance_data <- function(abundance_mat, daa_method) {
+  # Check for empty data
+  if (nrow(abundance_mat) == 0) {
+    stop("No features found in abundance data. This may indicate a data loading or preprocessing issue.")
+  }
+
+  if (ncol(abundance_mat) == 0) {
+    stop("No samples found in abundance data. Please check your data format.")
+  }
+
+  # Check for all-zero data (common PICRUSt 2.6.2 issue)
+  total_abundance <- sum(abundance_mat, na.rm = TRUE)
+  if (total_abundance == 0) {
+    stop("All abundance values are zero. This may indicate a PICRUSt version compatibility issue. ",
+         "Please verify your data format and consider using PICRUSt 2.5.2 output format if problems persist.")
+  }
+
+  # Check for excessive zero features
+  zero_features <- rowSums(abundance_mat, na.rm = TRUE) == 0
+  zero_feature_proportion <- sum(zero_features) / nrow(abundance_mat)
+
+  if (zero_feature_proportion > 0.9) {
+    warning(sprintf("%.1f%% of features have zero abundance across all samples. ",
+                   zero_feature_proportion * 100),
+            "This may indicate a PICRUSt version compatibility issue. ",
+            "Consider checking your data preprocessing steps.")
+  }
+
+  # Method-specific validations
+  if (daa_method == "LinDA") {
+    non_zero_features <- sum(zero_features == FALSE)
+    if (non_zero_features < 10) {
+      warning("Very few non-zero features detected for LinDA analysis. ",
+              "This may lead to unreliable results. Consider using a different DAA method.")
+    }
+  }
+
+  return(TRUE)
 }
 
 # Helper function: Perform ALDEx2 analysis
@@ -287,10 +562,53 @@ perform_aldex2_analysis <- function(abundance_mat, Group, Level, length_Level) {
   if (!requireNamespace("ALDEx2", quietly = TRUE)) {
     stop("Package 'ALDEx2' is required for ALDEx2 analysis. Please install it using BiocManager::install('ALDEx2')")
   }
-  
+
+  # Validate data before ALDEx2 analysis
+  if (nrow(abundance_mat) == 0) {
+    stop("No features available for ALDEx2 analysis")
+  }
+
+  if (ncol(abundance_mat) == 0) {
+    stop("No samples available for ALDEx2 analysis")
+  }
+
+  # Check for all-zero data first (PICRUSt compatibility issue)
+  total_abundance <- sum(abundance_mat, na.rm = TRUE)
+  if (total_abundance == 0) {
+    stop("All abundance values are zero. This may indicate a PICRUSt version compatibility issue. ",
+         "Please verify your data format and consider using PICRUSt 2.5.2 output format if problems persist.")
+  }
+
+  # Filter out features with zero abundance across all samples
+  feature_sums <- rowSums(abundance_mat)
+  non_zero_features <- feature_sums > 0
+
+  if (sum(non_zero_features) == 0) {
+    stop("No features with non-zero abundance found for ALDEx2 analysis. ",
+         "This may indicate a PICRUSt version compatibility issue.")
+  }
+
+  # ALDEx2 requires at least 2 features
+  if (sum(non_zero_features) < 2) {
+    stop("ALDEx2 requires at least 2 features with non-zero abundance. ",
+         "Only ", sum(non_zero_features), " feature(s) found. ",
+         "This may indicate a PICRUSt version compatibility issue.")
+  }
+
+  if (sum(non_zero_features) < nrow(abundance_mat)) {
+    message(sprintf("Filtering out %d features with zero abundance for ALDEx2 analysis",
+                   sum(!non_zero_features)))
+    abundance_mat <- abundance_mat[non_zero_features, , drop = FALSE]
+  }
+
   # Round the abundance data
   abundance_mat <- round(abundance_mat)
-  
+
+  # Additional check: ensure we have valid data for ALDEx2
+  if (nrow(abundance_mat) == 0 || ncol(abundance_mat) == 0) {
+    stop("No valid data remaining after filtering for ALDEx2 analysis")
+  }
+
   # Save the original Group factor and convert to numeric for ALDEx2
   original_Group <- Group
   Group <- as.numeric(Group)
@@ -300,20 +618,40 @@ perform_aldex2_analysis <- function(abundance_mat, Group, Level, length_Level) {
     message("Running ALDEx2 with two groups. Performing t-test...")
     
     # Create ALDEx2 object with numeric Group
-    ALDEx2_object <- ALDEx2::aldex.clr(
-      abundance_mat,
-      Group,
-      mc.samples = 256,
-      denom = "all",
-      verbose = FALSE
-    )
+    ALDEx2_object <- tryCatch({
+      ALDEx2::aldex.clr(
+        abundance_mat,
+        Group,
+        mc.samples = 256,
+        denom = "all",
+        verbose = FALSE
+      )
+    }, error = function(e) {
+      if (grepl("must be a vector|rownames.*cannot be empty", e$message)) {
+        stop("ALDEx2 analysis failed due to insufficient or invalid data. ",
+             "This may indicate a PICRUSt version compatibility issue. ",
+             "Original error: ", e$message)
+      } else {
+        stop("ALDEx2 analysis failed: ", e$message)
+      }
+    })
     
     # Get t-test results
-    results <- ALDEx2::aldex.ttest(
-      ALDEx2_object,
-      paired.test = FALSE,
-      verbose = FALSE
-    )
+    results <- tryCatch({
+      ALDEx2::aldex.ttest(
+        ALDEx2_object,
+        paired.test = FALSE,
+        verbose = FALSE
+      )
+    }, error = function(e) {
+      if (grepl("must be a vector|rownames.*cannot be empty|a must be a vector of numeric", e$message)) {
+        stop("ALDEx2 t-test failed due to insufficient or invalid data. ",
+             "This may indicate a PICRUSt version compatibility issue. ",
+             "Original error: ", e$message)
+      } else {
+        stop("ALDEx2 t-test failed: ", e$message)
+      }
+    })
     
     # Build result dataframe using original Level names
     return(data.frame(
@@ -332,13 +670,23 @@ perform_aldex2_analysis <- function(abundance_mat, Group, Level, length_Level) {
     message("Running ALDEx2 with multiple groups. This might take some time...")
     
     # Create ALDEx2 object for multiple groups with numeric Group
-    ALDEx2_object <- ALDEx2::aldex.clr(
-      abundance_mat,
-      Group,
-      mc.samples = 256,
-      denom = "all",
-      verbose = FALSE
-    )
+    ALDEx2_object <- tryCatch({
+      ALDEx2::aldex.clr(
+        abundance_mat,
+        Group,
+        mc.samples = 256,
+        denom = "all",
+        verbose = FALSE
+      )
+    }, error = function(e) {
+      if (grepl("must be a vector|rownames.*cannot be empty", e$message)) {
+        stop("ALDEx2 analysis failed due to insufficient or invalid data. ",
+             "This may indicate a PICRUSt version compatibility issue. ",
+             "Original error: ", e$message)
+      } else {
+        stop("ALDEx2 analysis failed: ", e$message)
+      }
+    })
     
     # Get Kruskal-Wallis and GLM test results
     results <- ALDEx2::aldex.kw(ALDEx2_object)
@@ -400,18 +748,29 @@ perform_deseq2_analysis <- function(abundance_mat, metadata, group, Level) {
     suppressWarnings({
       # Create DESeqDataSet
       dds <- DESeq2::DESeqDataSet(se, design = as.formula(paste0("~", group)))
-      
+
       # 根据样本量选择合适的拟合方法
       fitType <- if(ncol(abundance_mat) < 6) "mean" else "local"
-      
-      # Run DESeq2 pipeline
+
+      # Run DESeq2 pipeline with improved error handling
       dds <- DESeq2::estimateSizeFactors(dds)
-      dds <- DESeq2::estimateDispersions(dds, fitType = fitType)
+
+      # Try to estimate dispersions with different methods
+      dds <- tryCatch({
+        DESeq2::estimateDispersions(dds, fitType = fitType)
+      }, error = function(e) {
+        # If standard dispersion estimation fails, use gene-wise estimates
+        message("Standard dispersion estimation failed, using gene-wise estimates...")
+        dds <- DESeq2::estimateDispersionsGeneEst(dds)
+        DESeq2::dispersions(dds) <- SummarizedExperiment::mcols(dds)$dispGeneEst
+        return(dds)
+      })
+
       dds <- DESeq2::nbinomWaldTest(dds)
-      
+
       # Extract results
       res <- DESeq2::results(dds, contrast = c(group, Level[2], Level[1]))
-      
+
       data.frame(
         feature = rownames(abundance_mat),
         method = "DESeq2",
@@ -459,10 +818,15 @@ perform_limma_voom_analysis <- function(abundance_mat, Group, reference, Level, 
 
   # Extract results
   if (length_Level == 2) {
+    # Two-group comparison - ensure consistent format with other methods
+    group_levels <- levels(Group)
     results <- data.frame(
       feature = rownames(abundance_mat),
       method = "limma voom",
-      p_values = fit$p.value[,2]
+      group1 = group_levels[1],
+      group2 = group_levels[2],
+      p_values = fit$p.value[,2],
+      stringsAsFactors = FALSE
     )
   } else {
     # Multi-group comparison handling
@@ -472,7 +836,8 @@ perform_limma_voom_analysis <- function(abundance_mat, Group, reference, Level, 
       method = "limma voom",
       group1 = reference,
       group2 = group_levels[group_levels != reference],
-      p_values = as.vector(fit$p.value[,-1])
+      p_values = as.vector(fit$p.value[,-1]),
+      stringsAsFactors = FALSE
     )
   }
 
@@ -587,12 +952,15 @@ perform_maaslin2_analysis <- function(abundance_mat, metadata, group, reference,
     stop("Maaslin2 package is required but not installed")
   }
 
-  # Transpose abundance matrix
-  abundance_mat_t <- t(abundance_mat)
-
-  # Prepare metadata
+  # Prepare metadata first
   metadata <- as.data.frame(metadata)
-  rownames(metadata) <- metadata$sample
+
+  # Ensure metadata rownames match the column names of abundance_mat
+  # This is crucial because the main function has already reordered metadata to match abundance
+  rownames(metadata) <- colnames(abundance_mat)
+
+  # Transpose abundance matrix (samples become rows, features become columns)
+  abundance_mat_t <- t(abundance_mat)
 
   # Create temporary output directory
   output_dir <- tempdir()
@@ -623,12 +991,31 @@ perform_maaslin2_analysis <- function(abundance_mat, metadata, group, reference,
                                         stringsAsFactors = FALSE)
 
     # Format results
+    # Note: Maaslin2 replaces hyphens (-) with dots (.) in feature names
+    # We need to match features more intelligently
+
+    # Create a mapping between original and Maaslin2 feature names
+    original_features <- rownames(abundance_mat)
+    maaslin2_features <- maaslin2_results$feature
+
+    # Try direct matching first
+    matches <- match(original_features, maaslin2_features)
+
+    # For unmatched features, try with hyphen-to-dot conversion
+    unmatched_indices <- which(is.na(matches))
+    if (length(unmatched_indices) > 0) {
+      # Convert hyphens to dots in original feature names for matching
+      original_with_dots <- gsub("-", ".", original_features[unmatched_indices])
+      dot_matches <- match(original_with_dots, maaslin2_features)
+      matches[unmatched_indices] <- dot_matches
+    }
+
     results <- data.frame(
       feature = rownames(abundance_mat),
       method = "Maaslin2",
       group1 = if (length_Level == 2) Level[1] else reference,
       group2 = if (length_Level == 2) Level[2] else Level[Level != reference],
-      p_values = maaslin2_results$pval[match(rownames(abundance_mat), maaslin2_results$feature)],
+      p_values = maaslin2_results$pval[matches],
       stringsAsFactors = FALSE
     )
   } else {
@@ -655,29 +1042,43 @@ perform_lefser_analysis <- function(abundance_mat, metadata, group, Level) {
 
   # Perform Lefser analysis
   lefser_results <- lefser::lefser(se, classCol = group)  # Using classCol instead of deprecated groupCol
-  
-  # Check if results are empty
-  if (length(lefser_results$Names) == 0 || is.null(lefser_results$Names)) {
-    # If no significant features found, return an empty data frame with correct columns
-    message("No significant features found by Lefser analysis.")
-    return(data.frame(
-      feature = character(0),
-      method = character(0),
-      group1 = character(0),
-      group2 = character(0),
-      effect_scores = numeric(0)
-    ))
+
+  # Create results for all features, not just significant ones
+  all_features <- rownames(abundance_mat)
+
+  # Initialize results with all features
+  results <- data.frame(
+    feature = all_features,
+    method = "Lefser",
+    group1 = Level[1],
+    group2 = Level[2],
+    p_values = rep(1.0, length(all_features)),  # Default p-value of 1 for non-significant
+    stringsAsFactors = FALSE
+  )
+
+  # If significant features found, update their p-values
+  if (length(lefser_results$Names) > 0 && !is.null(lefser_results$Names)) {
+    # Match significant features to all features
+    sig_indices <- match(lefser_results$Names, all_features)
+
+    # Convert effect scores to p-values (higher absolute effect score = lower p-value)
+    # This is a simplified conversion; in practice, Lefser uses Wilcoxon test internally
+    effect_scores <- abs(lefser_results$scores)
+    # Convert to p-values: higher effect scores get lower p-values
+    max_score <- max(effect_scores, na.rm = TRUE)
+    if (max_score > 0) {
+      p_vals <- 1 - (effect_scores / max_score) * 0.95  # Scale to 0.05-1.0 range
+    } else {
+      p_vals <- rep(0.5, length(effect_scores))
+    }
+
+    # Update p-values for significant features
+    results$p_values[sig_indices] <- p_vals
   } else {
-    # If significant features found, return normal results
-    results <- data.frame(
-      feature = lefser_results$Names,
-      method = "Lefser",
-      group1 = Level[1],
-      group2 = Level[2],
-      effect_scores = lefser_results$scores
-    )
-    return(results)
+    message("No significant features found by Lefser analysis.")
   }
+
+  return(results)
 }
 
 # Helper function: Perform LinDA analysis
@@ -713,6 +1114,39 @@ perform_linda_analysis <- function(abundance, metadata, group, reference, Level,
   message(sprintf("Group variable: %s with levels: %s", group, paste(Level, collapse=", ")))
   message(sprintf("Reference level: %s", reference))
   message(sprintf("Number of features: %d, Number of samples: %d", nrow(feature.dat), ncol(feature.dat)))
+
+  # Validate data before LinDA analysis
+  if (nrow(feature.dat) == 0) {
+    stop("No features available for LinDA analysis. This may be due to overly strict filtering. ",
+         "Please check your data preprocessing steps.")
+  }
+
+  if (ncol(feature.dat) == 0) {
+    stop("No samples available for LinDA analysis. Please check your metadata and sample matching.")
+  }
+
+  # Check if all features have zero abundance
+  feature_sums <- rowSums(feature.dat)
+  if (all(feature_sums == 0)) {
+    stop("All features have zero abundance across all samples. ",
+         "This may indicate a data format issue with PICRUSt 2.6.2 output. ",
+         "Please verify your input data format.")
+  }
+
+  # Filter out features with zero abundance across all samples
+  non_zero_features <- feature_sums > 0
+  if (sum(non_zero_features) == 0) {
+    stop("No features with non-zero abundance found. ",
+         "This may be due to PICRUSt version compatibility issues. ",
+         "Please check if your data format is compatible.")
+  }
+
+  # Apply filtering if needed
+  if (sum(non_zero_features) < nrow(feature.dat)) {
+    message(sprintf("Filtering out %d features with zero abundance across all samples",
+                   sum(!non_zero_features)))
+    feature.dat <- feature.dat[non_zero_features, , drop = FALSE]
+  }
 
   # Use tryCatch to catch errors in LinDA analysis
   linda_result <- tryCatch({

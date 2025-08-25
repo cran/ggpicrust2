@@ -4,6 +4,8 @@
 #' required for the demonstration functions in the package. The dataset includes
 #' environmental information for each sample.
 #'
+#' @docType data
+#' @name metadata
 #' @format A tibble with each row representing metadata for a sample.
 #' \describe{
 #'   \item{Sample1}{Metadata for Sample1, including Environment}
