@@ -20,34 +20,38 @@
 #' }
 #'
 #' @examples
-#' \donttest{
-#' library(magrittr)
-#' library(ggpicrust2)
-#' library(tibble)
-#' data("metacyc_abundance")
-#' data("metadata")
+#' # Minimal DAA-like results from three methods (no external dependencies required)
+#' deseq2_df <- data.frame(
+#'   feature = c("ko00010", "ko00020", "ko00564"),
+#'   group1 = c("A", "A", "A"),
+#'   group2 = c("B", "B", "B"),
+#'   p_adjust = c(0.01, 0.20, 0.03),
+#'   stringsAsFactors = FALSE
+#' )
 #'
-#' # Run pathway_daa function for multiple methods
-#' methods <- c("DESeq2", "edgeR","Maaslin2")
-#' daa_results_list <- lapply(methods, function(method) {
-#' pathway_daa(abundance = metacyc_abundance %>% column_to_rownames("pathway"),
-#' metadata = metadata, group = "Environment", daa_method = method)
-#' })
+#' edgeR_df <- data.frame(
+#'   feature = c("ko00010", "ko00680", "ko00564"),
+#'   group1 = c("A", "A", "A"),
+#'   group2 = c("B", "B", "B"),
+#'   p_adjust = c(0.02, 0.04, 0.01),
+#'   stringsAsFactors = FALSE
+#' )
 #'
-#' names(daa_results_list) <- methods
-#' # Correct Maaslin2 feature names by replacing dots with hyphens.
-#' # Note: When using Maaslin2 as the differential abundance analysis method,
-#' # it modifies the original feature names by replacing hyphens (-) with dots (.).
-#' # This replacement can cause inconsistencies when trying to compare results from Maaslin2
-#' # with those from other methods that do not modify feature names.
-#' # Therefore, this line of code reverses that replacement, converting the dots back into
-#' # hyphens for accurate and consistent comparisons across different methods.
-#' daa_results_list[["Maaslin2"]]$feature <- gsub("\\.", "-", daa_results_list[["Maaslin2"]]$feature)
+#' maaslin2_df <- data.frame(
+#'   feature = c("ko00010", "ko03030", "ko00564"),
+#'   group1 = c("A", "A", "A"),
+#'   group2 = c("B", "B", "B"),
+#'   p_adjust = c(0.03, 0.02, 0.04),
+#'   stringsAsFactors = FALSE
+#' )
 #'
-#' # Compare results across different methods
-#' comparison_results <- compare_daa_results(daa_results_list = daa_results_list,
-#' method_names = c("DESeq2", "edgeR", "Maaslin2"))
-#' }
+#' daa_results_list <- list(DESeq2 = deseq2_df, edgeR = edgeR_df, Maaslin2 = maaslin2_df)
+#' comparison_results <- compare_daa_results(
+#'   daa_results_list = daa_results_list,
+#'   method_names = c("DESeq2", "edgeR", "Maaslin2"),
+#'   p_values_threshold = 0.05
+#' )
+#' comparison_results
 #' @export
 utils::globalVariables(c("group1","group2"))
 compare_daa_results <- function(daa_results_list, method_names, p_values_threshold = 0.05) {
@@ -58,49 +62,58 @@ compare_daa_results <- function(daa_results_list, method_names, p_values_thresho
   # method_names -- A character vector representing the names of each method.
   # p_values_threshold -- A numeric value representing the threshold for the p-values. Features with p-values less than this threshold are considered statistically significant.
 
-  # Check input parameters
-  stopifnot(is.list(daa_results_list))
-  stopifnot(is.character(method_names))
-  stopifnot(is.numeric(p_values_threshold))
+
+  # Input validation with clear error messages
+  if (!is.list(daa_results_list)) {
+    stop("'daa_results_list' must be a list of DAA result data frames")
+  }
+  if (length(daa_results_list) == 0) {
+    stop("'daa_results_list' cannot be empty")
+  }
+  if (!is.character(method_names)) {
+    stop("'method_names' must be a character vector")
+  }
+  if (length(method_names) != length(daa_results_list)) {
+    stop(sprintf("'method_names' length (%d) must match 'daa_results_list' length (%d)",
+                 length(method_names), length(daa_results_list)))
+  }
+  if (!is.numeric(p_values_threshold) || length(p_values_threshold) != 1) {
+    stop("'p_values_threshold' must be a single numeric value")
+  }
+  if (p_values_threshold <= 0 || p_values_threshold > 1) {
+    stop("'p_values_threshold' must be between 0 and 1")
+  }
 
   # Initialize a list to store the features obtained by each method
   features <- list()
 
   # Get the features obtained by each method
   for (i in seq_along(daa_results_list)) {
-    if (all(c("group1", "group2") %in% colnames(daa_results_list[[i]]))) {
-      # This is a pairwise comparison method
-      group_combinations <- unique(daa_results_list[[i]][, c("group1", "group2")])
-      features[[i]] <- lapply(seq_len(nrow(group_combinations)), function(j) {
-        subset(daa_results_list[[i]], group1 == group_combinations[j, "group1"] & group2 == group_combinations[j, "group2"] & p_adjust < p_values_threshold)$feature
-      })
-    } else if (all(c("group1", "group2", "group3") %in% colnames(daa_results_list[[i]]))) {
-      # This is a multi-group comparison method
-      features[[i]] <- daa_results_list[[i]][daa_results_list[[i]]$p_adjust < p_values_threshold, "feature"]
-    } else {
-      stop("Unknown comparison type in daa_results_list[[", i, "]].")
+    if (!all(c("group1", "group2") %in% colnames(daa_results_list[[i]]))) {
+      stop("DAA results in daa_results_list[[", i, "]] must contain 'group1' and 'group2' columns")
     }
+    group_combinations <- unique(daa_results_list[[i]][, c("group1", "group2")])
+    features[[i]] <- lapply(seq_len(nrow(group_combinations)), function(j) {
+      subset(daa_results_list[[i]], group1 == group_combinations[j, "group1"] & group2 == group_combinations[j, "group2"] & p_adjust < p_values_threshold)$feature
+    })
   }
+
+  # Flatten nested list structure (from group combinations) to simple vectors
+  features_flat <- lapply(features, function(x) unique(unlist(x)))
 
   # Calculate the intersection and union of the features obtained by each method
-  intersect_features <- Reduce(intersect, unlist(features, recursive = FALSE))
-  union_features <- unique(unlist(features))
+  intersect_features <- Reduce(intersect, features_flat)
+  union_features <- unique(unlist(features_flat))
 
-  # Calculate the differences in the features obtained by each method
-  diff_features <- lapply(features, function(x) setdiff(x, intersect_features))
+  # Calculate the differences in the features obtained by each method (exclude common)
+  diff_features <- lapply(features_flat, function(x) setdiff(x, intersect_features))
 
-  # Compare features across different groups using the statistical principle
-  for (i in seq_along(diff_features)) {
-    for (j in seq_along(diff_features)) {
-      if (i != j) {
-        common_features <- intersect(diff_features[[i]], diff_features[[j]])
-        if (length(common_features) > 0) {
-          diff_features[[i]] <- setdiff(diff_features[[i]], common_features)
-          diff_features[[j]] <- setdiff(diff_features[[j]], common_features)
-        }
-      }
-    }
-  }
+  # Find features unique to each method (not shared with any other method)
+  # Using duplicated() for correct handling of features appearing in 3+ methods
+  all_diff <- unlist(diff_features)
+  is_duplicated <- duplicated(all_diff) | duplicated(all_diff, fromLast = TRUE)
+  unique_only_features <- unique(all_diff[!is_duplicated])
+  diff_features <- lapply(diff_features, function(x) x[x %in% unique_only_features])
 
   # Initialize a data frame to store the comparison results
   comparison_results <- data.frame(
@@ -114,18 +127,18 @@ compare_daa_results <- function(daa_results_list, method_names, p_values_thresho
   )
 
   # Output the comparison results and store them in the data frame
-  cat("Comparing", length(daa_results_list), "methods:\n\n")
+  message("Comparing ", length(daa_results_list), " methods:\n")
   for (i in seq_along(daa_results_list)) {
-    num_features <- length(unlist(features[[i]]))
+    num_features <- length(features_flat[[i]])
     num_common_features <- length(intersect_features)
-    num_diff_features <- length(unlist(diff_features[[i]]))
+    num_diff_features <- length(diff_features[[i]])
     common_features_names <- paste(intersect_features, collapse = ", ")
-    diff_features_names <- paste(unlist(diff_features[[i]]), collapse = ", ")
+    diff_features_names <- paste(diff_features[[i]], collapse = ", ")
 
-    cat("The", method_names[i], "method obtained", num_features, "statistically significant features.\n")
-    cat("The number of features that are common to other methods is", num_common_features, "\n")
-    cat("The number of features that are different from other methods is", num_diff_features, "\n")
-    cat("The names of the features that are different from other methods are", diff_features_names, "\n\n")
+    message("The ", method_names[i], " method obtained ", num_features, " statistically significant features.")
+    message("The number of features that are common to other methods is ", num_common_features)
+    message("The number of features that are different from other methods is ", num_diff_features)
+    message("The names of the features that are different from other methods are ", diff_features_names, "\n")
 
     comparison_results <- rbind(comparison_results, data.frame(
       method = method_names[i],
@@ -138,10 +151,10 @@ compare_daa_results <- function(daa_results_list, method_names, p_values_thresho
     ))
   }
 
-  cat("The number of features that are common to all methods is", length(intersect_features), "\n")
-  cat("The names of the features that are common to all methods are", paste(intersect_features, collapse = ", "), "\n")
-  cat("The number of features that are obtained by any of the methods is", length(union_features), "\n")
-  cat("The names of the features that are obtained by any of the methods are", paste(union_features, collapse = ", "), "\n")
+  message("The number of features that are common to all methods is ", length(intersect_features))
+  message("The names of the features that are common to all methods are ", paste(intersect_features, collapse = ", "))
+  message("The number of features that are obtained by any of the methods is ", length(union_features))
+  message("The names of the features that are obtained by any of the methods are ", paste(union_features, collapse = ", "))
 
   return(comparison_results)
 }

@@ -50,20 +50,95 @@ validate_group_sizes <- function(group_vector, group_name) {
 #' This function performs Gene Set Enrichment Analysis (GSEA) on PICRUSt2 predicted functional data
 #' to identify enriched pathways between different conditions.
 #'
-#' @param abundance A data frame containing KO/EC/MetaCyc abundance data, with features as rows and samples as columns
+#' @param abundance A data frame containing gene/enzyme abundance data, with features as rows and samples as columns.
+#'   For KEGG analysis: features should be KO IDs (e.g., K00001).
+#'   For MetaCyc analysis: features should be EC numbers (e.g., EC:1.1.1.1 or 1.1.1.1), NOT pathway IDs.
+#'   For GO analysis: features should be KO IDs that will be mapped to GO terms.
+#'   NOTE: This function requires gene-level data, not pathway-level abundances.
+#'   For pathway abundance analysis, use \code{\link{pathway_daa}} instead
 #' @param metadata A data frame containing sample metadata
 #' @param group A character string specifying the column name in metadata that contains the grouping variable
 #' @param pathway_type A character string specifying the pathway type: "KEGG", "MetaCyc", or "GO"
-#' @param method A character string specifying the GSEA method: "fgsea", "GSEA", or "clusterProfiler"
-#' @param rank_method A character string specifying the ranking statistic: "signal2noise", "t_test", "log2_ratio", or "diff_abundance"
-#' @param nperm An integer specifying the number of permutations
+#' @param method A character string specifying the GSEA method:
+#'   \itemize{
+#'     \item \code{"camera"}: Competitive gene set test using limma's camera function (recommended).
+#'           Accounts for inter-gene correlations and provides more reliable p-values.
+#'     \item \code{"fry"}: Fast approximation to rotation gene set testing using limma's fry function.
+#'           Self-contained test that is computationally efficient.
+#'     \item \code{"fgsea"}: Fast preranked GSEA implementation. Note: preranked methods may produce
+#'           unreliable p-values due to not accounting for inter-gene correlations (Wu et al., 2012).
+#'     \item \code{"GSEA"} or \code{"clusterProfiler"}: clusterProfiler's GSEA implementation.
+#'   }
+#' @param covariates A character vector specifying column names in metadata to use as covariates
+#'   for adjustment. Only used when method is "camera" or "fry". Default is NULL (no covariates).
+#'   Example: \code{covariates = c("age", "sex", "BMI")}
+#' @param contrast For multi-group comparisons with "camera" or "fry" methods, specify the contrast
+#'   to test. Can be a character string naming a group level, or a numeric vector of contrast weights.
+#'   Default is NULL (automatic: compares second group to first).
+#' @param inter.gene.cor Numeric value specifying the inter-gene correlation for camera method.
+#'   Default is 0.01. Use NA to estimate correlation from data for each gene set.
+#' @param rank_method A character string specifying the ranking statistic for preranked methods
+#'   (fgsea, GSEA, clusterProfiler): "signal2noise", "t_test", "log2_ratio", or "diff_abundance"
+#' @param nperm An integer specifying the number of permutations (for clusterProfiler method only).
+#'   The fgsea method uses adaptive multilevel splitting and does not require a fixed permutation count.
 #' @param min_size An integer specifying the minimum gene set size
 #' @param max_size An integer specifying the maximum gene set size
-#' @param p.adjust A character string specifying the p-value adjustment method
+#' @param p_adjust_method A character string specifying the p-value adjustment method
+#' @param p.adjust Deprecated. Use \code{p_adjust_method} instead.
 #' @param seed An integer specifying the random seed for reproducibility
-#' @param go_category A character string specifying the GO category: "BP" (Biological Process), "MF" (Molecular Function), or "CC" (Cellular Component). Only used when pathway_type = "GO". Default is "BP".
+#' @param go_category A character string specifying GO category to use.
+#'   "all" (default) uses all categories present in the reference data.
+#'   Valid categories are determined by the reference data (currently MF and CC).
+#'   See \code{table(ko_to_go_reference$category)} for available categories.
+#' @param organism A character string specifying the organism for KEGG analysis (default: "ko" for KEGG Orthology)
 #'
-#' @return A data frame containing GSEA results
+#' @return A data frame containing GSEA results with columns:
+#'   \itemize{
+#'     \item \code{pathway_id}: Pathway identifier
+#'     \item \code{pathway_name}: Pathway name/description
+#'     \item \code{size}: Number of genes in the pathway
+#'     \item \code{direction}: Direction of enrichment ("Up" or "Down", for camera/fry)
+#'     \item \code{pvalue}: Raw p-value
+#'     \item \code{p.adjust}: Adjusted p-value (FDR)
+#'     \item \code{method}: The method used for analysis
+#'   }
+#'   For fgsea/clusterProfiler methods, additional columns include ES, NES, and leading_edge.
+#'
+#' @details
+#' \strong{Method Selection:}
+#'
+#' The \code{camera} method (default) is recommended for most analyses because:
+#' \itemize{
+#'   \item It accounts for inter-gene correlations, providing more accurate p-values
+#'   \item It supports covariate adjustment through the design matrix
+#'   \item It performs a competitive test (genes in set vs. genes not in set)
+#' }
+#'
+#' The \code{fry} method is a fast alternative that:
+#' \itemize{
+#'   \item Performs a self-contained test (are genes in the set differentially expressed?)
+#'   \item Is computationally very efficient for large numbers of gene sets
+#'   \item Also supports covariate adjustment
+#' }
+#'
+#' The preranked methods (\code{fgsea}, \code{GSEA}) are included for compatibility but
+#' users should be aware that Wu et al. (2012) demonstrated these can produce "spectacularly
+#' wrong p-values" even with low inter-gene correlations.
+#'
+#' \strong{Covariate Adjustment:}
+#'
+#' When using \code{method = "camera"} or \code{method = "fry"}, you can adjust for
+#' confounding variables by specifying them in the \code{covariates} parameter.
+#' This is particularly important in microbiome studies where factors like age, sex,
+#' BMI, and batch effects can influence results.
+#'
+#' @references
+#' Wu, D., & Smyth, G. K. (2012). Camera: a competitive gene set test accounting for
+#' inter-gene correlation. Nucleic Acids Research, 40(17), e133.
+#'
+#' Wu, D., Lim, E., Vaillant, F., Asselin-Labat, M. L., Visvader, J. E., & Smyth, G. K. (2010).
+#' ROAST: rotation gene set tests for complex microarray experiments. Bioinformatics, 26(17), 2176-2182.
+#'
 #' @export
 #'
 #' @examples
@@ -71,82 +146,137 @@ validate_group_sizes <- function(group_vector, group_name) {
 #' # Load example data
 #' data(ko_abundance)
 #' data(metadata)
-#' 
+#'
 #' # Prepare abundance data
 #' abundance_data <- as.data.frame(ko_abundance)
 #' rownames(abundance_data) <- abundance_data[, "#NAME"]
 #' abundance_data <- abundance_data[, -1]
-#' 
-#' # Run GSEA analysis
+#'
+#' # Method 1: Using camera (recommended) - accounts for inter-gene correlations
 #' gsea_results <- pathway_gsea(
+#'   abundance = abundance_data,
+#'   metadata = metadata,
+#'   group = "Environment",
+#'   pathway_type = "KEGG",
+#'   method = "camera"
+#' )
+#'
+#' # Method 2: Using camera with covariate adjustment
+#' gsea_results_adj <- pathway_gsea(
+#'   abundance = abundance_data,
+#'   metadata = metadata,
+#'   group = "Disease",
+#'   covariates = c("age", "sex"),
+#'   pathway_type = "KEGG",
+#'   method = "camera"
+#' )
+#'
+#' # Method 3: Using fry for fast self-contained testing
+#' gsea_results_fry <- pathway_gsea(
+#'   abundance = abundance_data,
+#'   metadata = metadata,
+#'   group = "Environment",
+#'   pathway_type = "KEGG",
+#'   method = "fry"
+#' )
+#'
+#' # Method 4: Using fgsea (preranked, less reliable p-values)
+#' gsea_results_fgsea <- pathway_gsea(
 #'   abundance = abundance_data,
 #'   metadata = metadata,
 #'   group = "Environment",
 #'   pathway_type = "KEGG",
 #'   method = "fgsea"
 #' )
-#' 
+#'
 #' # Visualize results
 #' visualize_gsea(gsea_results, plot_type = "enrichment_plot", n_pathways = 10)
 #' }
-pathway_gsea <- function(abundance, 
-                        metadata, 
-                        group, 
-                        pathway_type = "KEGG", 
-                        method = "fgsea", 
-                        rank_method = "signal2noise", 
-                        nperm = 1000, 
-                        min_size = 10, 
-                        max_size = 500, 
-                        p.adjust = "BH",
+pathway_gsea <- function(abundance,
+                        metadata,
+                        group,
+                        pathway_type = "KEGG",
+                        method = "camera",
+                        covariates = NULL,
+                        contrast = NULL,
+                        inter.gene.cor = 0.01,
+                        rank_method = "signal2noise",
+                        nperm = 1000,
+                        min_size = 5,
+                        max_size = 500,
+                        p_adjust_method = "BH",
                         seed = 42,
-                        go_category = "BP") {
-  
-  # Input validation
-  if (!is.data.frame(abundance) && !is.matrix(abundance)) {
-    stop("'abundance' must be a data frame or matrix")
+                        go_category = "all",
+                        organism = "ko",
+                        p.adjust = NULL) {
+  # Backward compatibility for deprecated parameter
+  if (!is.null(p.adjust)) {
+    warning("'p.adjust' parameter is deprecated. Use 'p_adjust_method' instead.", call. = FALSE)
+    p_adjust_method <- p.adjust
   }
   
-  if (!is.data.frame(metadata)) {
-    stop("'metadata' must be a data frame")
-  }
-  
-  if (!group %in% colnames(metadata)) {
-    stop(paste("Group variable", group, "not found in metadata"))
-  }
+  # Input validation using unified functions
+  validate_abundance(abundance, min_samples = 4)
+  validate_metadata(metadata)
+  validate_group(metadata, group, min_groups = 2)
   
   if (!pathway_type %in% c("KEGG", "MetaCyc", "GO")) {
     stop("pathway_type must be one of 'KEGG', 'MetaCyc', or 'GO'")
   }
-  
-  if (!method %in% c("fgsea", "GSEA", "clusterProfiler")) {
-    stop("method must be one of 'fgsea', 'GSEA', or 'clusterProfiler'")
+
+  valid_methods <- c("camera", "fry", "fgsea", "GSEA", "clusterProfiler")
+  if (!method %in% valid_methods) {
+    stop("method must be one of: ", paste(valid_methods, collapse = ", "))
   }
-  
-  if (!rank_method %in% c("signal2noise", "t_test", "log2_ratio", "diff_abundance")) {
-    stop("rank_method must be one of 'signal2noise', 't_test', 'log2_ratio', or 'diff_abundance'")
-  }
-  
-  # Validate GO category parameter when pathway_type is "GO"
-  if (pathway_type == "GO") {
-    valid_go_categories <- c("BP", "MF", "CC", "all")
-    if (!go_category %in% valid_go_categories) {
-      stop(sprintf("Invalid go_category '%s'. Must be one of: %s", 
-                   go_category, paste(valid_go_categories, collapse = ", ")))
+
+  # Validate rank_method only for preranked methods
+  if (method %in% c("fgsea", "GSEA", "clusterProfiler")) {
+    if (!rank_method %in% c("signal2noise", "t_test", "log2_ratio", "diff_abundance")) {
+      stop("rank_method must be one of 'signal2noise', 't_test', 'log2_ratio', or 'diff_abundance'")
     }
   }
-  
-  # Check if required packages are installed
-  required_packages <- list(
+
+  # Validate covariates
+ if (!is.null(covariates)) {
+    if (method %in% c("fgsea", "GSEA", "clusterProfiler")) {
+      warning("Covariates are only supported for 'camera' and 'fry' methods. ",
+              "Covariates will be ignored for method '", method, "'.",
+              call. = FALSE)
+    } else {
+      # Check if all covariates exist in metadata
+      missing_covs <- setdiff(covariates, colnames(metadata))
+      if (length(missing_covs) > 0) {
+        stop("Covariates not found in metadata: ", paste(missing_covs, collapse = ", "))
+      }
+    }
+  }
+
+  # Validate inter.gene.cor for camera (correlation range: -1 to 1)
+  if (method == "camera" && !is.null(inter.gene.cor) && !is.na(inter.gene.cor)) {
+    if (!is.numeric(inter.gene.cor) || inter.gene.cor < -1 || inter.gene.cor > 1) {
+      stop("inter.gene.cor must be a numeric value between -1 and 1, or NA")
+    }
+  }
+
+  # GO category validation is deferred to prepare_gene_sets() where it is
+  # checked against the actual reference data (data-driven, not hardcoded)
+
+  # Check if required package is installed
+  method_packages <- list(
+    "camera" = "limma",
+    "fry" = "limma",
     "fgsea" = "fgsea",
     "GSEA" = "clusterProfiler",
     "clusterProfiler" = "clusterProfiler"
   )
-  
-  pkg_name <- required_packages[[method]]
-  if (!requireNamespace(pkg_name, quietly = TRUE)) {
-    stop(paste("Package", pkg_name, "is required for method", method, 
-               ". Please install it using BiocManager::install('", pkg_name, "').", sep = ""))
+  require_package(method_packages[[method]], purpose = paste("GSEA method", method))
+
+  # Warning for preranked methods about p-value reliability
+  if (method %in% c("fgsea", "GSEA", "clusterProfiler")) {
+    message("Note: Preranked GSEA methods (fgsea, clusterProfiler) do not account for ",
+            "inter-gene correlations, which may lead to unreliable p-values ",
+            "(Wu et al., 2012). Consider using method='camera' or method='fry' for ",
+            "more reliable statistical inference.")
   }
   
   # Set seed for reproducibility
@@ -164,58 +294,91 @@ pathway_gsea <- function(abundance,
   # Ensure abundance is a matrix with samples as columns
   abundance_mat <- as.matrix(abundance)
   
+  # Input validation for MetaCyc pathway data
+  if (pathway_type == "MetaCyc") {
+    # Check if features look like MetaCyc pathway IDs instead of EC numbers
+    feature_names <- rownames(abundance_mat)
+    if (length(feature_names) > 0) {
+      # Check first 10 features for pathway patterns
+      check_features <- feature_names[1:min(10, length(feature_names))]
+      if (any(grepl("-PWY$|-PWY[0-9]+$", check_features))) {
+        warning(
+          "Input appears to contain MetaCyc pathway IDs (e.g., ending in '-PWY'). ",
+          "pathway_gsea() requires gene/enzyme level data (EC numbers). ",
+          "For pathway-level abundance analysis, use pathway_daa() instead. ",
+          "To run GSEA, use EC abundance data from PICRUSt2 output ",
+          "(EC_metagenome_out/pred_metagenome_unstrat.tsv). ",
+          "See ?pathway_gsea for details.", 
+          call. = FALSE, immediate. = TRUE
+        )
+      }
+    }
+  }
+
+  # Align samples between abundance and metadata using unified function
+  aligned <- align_samples(abundance_mat, metadata)
+  abundance_mat <- as.matrix(aligned$abundance)
+  metadata <- aligned$metadata
+
+  # Enforce minimum sample requirement
+  if (aligned$n_samples < 4) {
+    stop("Insufficient samples (", aligned$n_samples,
+         "). Need at least 4 samples for statistical analysis.")
+  }
+
   # Extract group information
   Group <- factor(metadata[[group]])
-  names(Group) <- rownames(metadata)
-  
-  # Find common samples (eliminate special case handling)
-  common_samples <- intersect(colnames(abundance_mat), names(Group))
-  
-  # Enforce minimum requirements (clear validation)
-  if (length(common_samples) < 4) {
-    stop("Insufficient overlapping samples (", length(common_samples), 
-         "/", ncol(abundance_mat), "). Need at least 4 samples for statistical analysis.")
-  }
-  
-  # Inform user about sample subsetting (transparency)
-  if (length(common_samples) < ncol(abundance_mat)) {
-    warning(sprintf("Using %d/%d overlapping samples between abundance data and metadata", 
-                    length(common_samples), ncol(abundance_mat)))
-  }
-  
-  # Clean subset to common samples (no special cases)
-  abundance_mat <- abundance_mat[, common_samples]
-  Group <- Group[common_samples]
-  
+  names(Group) <- colnames(abundance_mat)
+
   # Validate group balance for statistical reliability
   group_counts <- table(Group)
   if (any(group_counts < 2)) {
-    stop("Each group must have at least 2 samples. Current group sizes: ", 
+    stop("Each group must have at least 2 samples. Current group sizes: ",
          paste(names(group_counts), "=", group_counts, collapse = ", "))
   }
   
   # Prepare gene sets
-  gene_sets <- prepare_gene_sets(pathway_type)
-  
-  # Calculate ranking metric
-  ranked_list <- calculate_rank_metric(abundance_mat, metadata, group, method = rank_method)
-  
-  # Run GSEA based on selected method
-  if (method == "fgsea") {
-    if (!requireNamespace("fgsea", quietly = TRUE)) {
-      stop("Package 'fgsea' is required. Please install it using BiocManager::install('fgsea').")
-    }
-    
-    results <- run_fgsea(ranked_list, gene_sets, nperm, min_size, max_size)
-    
+  gene_sets <- prepare_gene_sets(pathway_type, organism = organism, go_category = go_category)
+
+  # Run analysis based on selected method
+  if (method %in% c("camera", "fry")) {
+    # =========================================================================
+    # Limma-based methods (camera/fry) with covariate support
+    # =========================================================================
+    results <- run_limma_gsea(
+      abundance_mat = abundance_mat,
+      metadata = metadata,
+      group = group,
+      covariates = covariates,
+      contrast = contrast,
+      gene_sets = gene_sets,
+      method = method,
+      inter.gene.cor = inter.gene.cor,
+      min_size = min_size,
+      max_size = max_size,
+      p.adjust.method = p_adjust_method
+    )
+
+  } else if (method == "fgsea") {
+    # =========================================================================
+    # Preranked methods (fgsea)
+    # =========================================================================
+
+    # Calculate ranking metric for preranked methods
+    ranked_list <- calculate_rank_metric(abundance_mat, metadata, group, method = rank_method)
+    results <- run_fgsea(ranked_list, gene_sets, min_size, max_size)
+
   } else if (method == "GSEA" || method == "clusterProfiler") {
-    if (!requireNamespace("clusterProfiler", quietly = TRUE)) {
-      stop("Package 'clusterProfiler' is required. Please install it using BiocManager::install('clusterProfiler').")
-    }
-    
+    # =========================================================================
+    # clusterProfiler GSEA
+    # =========================================================================
+
+    # Calculate ranking metric for preranked methods
+    ranked_list <- calculate_rank_metric(abundance_mat, metadata, group, method = rank_method)
+
     # Convert ranked list to format required by clusterProfiler
     gene_list <- sort(ranked_list, decreasing = TRUE)
-    
+
     # Run GSEA using clusterProfiler
     gsea_result <- clusterProfiler::GSEA(
       geneList = gene_list,
@@ -226,15 +389,15 @@ pathway_gsea <- function(abundance,
       minGSSize = min_size,
       maxGSSize = max_size,
       pvalueCutoff = 1,
-      pAdjustMethod = p.adjust,
+      pAdjustMethod = p_adjust_method,
       nPermSimple = nperm,
       seed = seed
     )
-    
+
     # Convert results to data frame
     if (length(gsea_result) > 0) {
       results <- as.data.frame(gsea_result)
-      
+
       # Rename columns to match fgsea output
       results <- data.frame(
         pathway_id = results$ID,
@@ -248,37 +411,14 @@ pathway_gsea <- function(abundance,
         stringsAsFactors = FALSE
       )
     } else {
-      results <- data.frame(
-        pathway_id = character(),
-        pathway_name = character(),
-        size = integer(),
-        ES = numeric(),
-        NES = numeric(),
-        pvalue = numeric(),
-        p.adjust = numeric(),
-        leading_edge = character(),
-        stringsAsFactors = FALSE
-      )
+      results <- create_empty_gsea_result(method, full = TRUE)
     }
   }
-  
-  # Add method information (handle empty results)
+
+  # Add method information to populated results
+  # (empty results already have method from factory)
   if (nrow(results) > 0) {
     results$method <- method
-  } else {
-    # Create empty result with correct structure
-    results <- data.frame(
-      pathway_id = character(),
-      pathway_name = character(),
-      size = integer(),
-      ES = numeric(),
-      NES = numeric(),
-      pvalue = numeric(),
-      p.adjust = numeric(),
-      leading_edge = character(),
-      method = character(),
-      stringsAsFactors = FALSE
-    )
   }
   
   return(results)
@@ -288,136 +428,94 @@ pathway_gsea <- function(abundance,
 #'
 #' @param pathway_type A character string specifying the pathway type: "KEGG", "MetaCyc", or "GO"
 #' @param organism A character string specifying the organism (only relevant for KEGG and GO)
-#' @param go_category A character string specifying the GO category: "BP" (Biological Process), "MF" (Molecular Function), "CC" (Cellular Component), or "all"
+#' @param go_category A character string specifying the GO category to use.
+#'   "all" (default) uses all categories. Valid values are determined by
+#'   the reference data; see \code{table(ko_to_go_reference$category)}.
 #'
 #' @return A list of pathway gene sets
 #' @export
-prepare_gene_sets <- function(pathway_type = "KEGG", organism = "ko", go_category = "BP") {
-  
+prepare_gene_sets <- function(pathway_type = "KEGG", organism = "ko", go_category = "all") {
+
+  # Validate pathway_type
+  valid_types <- c("KEGG", "MetaCyc", "GO")
+  if (!pathway_type %in% valid_types) {
+    stop("pathway_type must be one of: ", paste(valid_types, collapse = ", "))
+  }
+
   if (pathway_type == "KEGG") {
-    # Initialize gene_sets
-    gene_sets <- list()
-    
-    # Try to load KEGG pathway to KO mapping
-    tryCatch({
-      if (!exists("ko_to_kegg_reference")) {
-        data("ko_to_kegg_reference", package = "ggpicrust2", envir = environment())
-      }
-      
-      # Convert to list format required for GSEA
-      ko_to_kegg_reference <- as.data.frame(ko_to_kegg_reference)
-      
-      # Create a list where each element is a pathway containing KO IDs
-      for (i in 1:nrow(ko_to_kegg_reference)) {
-        pathway_id <- ko_to_kegg_reference[i, 1]
-        ko_ids <- as.character(ko_to_kegg_reference[i, -1])
-        ko_ids <- ko_ids[!is.na(ko_ids) & ko_ids != ""]
-        
-        if (length(ko_ids) > 0) {
-          gene_sets[[pathway_id]] <- ko_ids
-        }
-      }
-      
-    }, error = function(e) {
-      # Create dummy gene sets for testing when reference data is not available
-      warning("KEGG reference data not found. Creating dummy gene sets for testing.", call. = FALSE)
-      
-      # Create some dummy pathways for demonstration
-      gene_sets <<- list(
-        "ko00010" = c("K00844", "K12407", "K00845", "K00886", "K08074"),
-        "ko00020" = c("K00239", "K00240", "K00241", "K00242", "K01902"),
-        "ko00030" = c("K00016", "K00018", "K00128", "K01595", "K01596"),
-        "ko00040" = c("K01623", "K01624", "K11645", "K01803", "K15633"),
-        "ko00051" = c("K00134", "K00150", "K03781", "K03782", "K14085")
-      )
-    })
-    
+    # Load KEGG reference using unified loader
+    ko_to_kegg_reference <- load_reference_data("ko_to_kegg")
+
+    # Create gene sets: list where each element is a pathway containing KO IDs
+    gene_sets <- split(ko_to_kegg_reference$ko_id, ko_to_kegg_reference$pathway_id)
+
   } else if (pathway_type == "MetaCyc") {
-    # Load MetaCyc pathway to EC mapping
-    if (!exists("metacyc_to_ec_reference")) {
-      # Try to load from package extdata first
-      tryCatch({
-        metacyc_ref_path <- system.file("extdata", "metacyc_to_ec_reference.RData", package = "ggpicrust2")
-        if (file.exists(metacyc_ref_path)) {
-          load(metacyc_ref_path, envir = environment())
-        } else {
-          stop("metacyc_to_ec_reference data file not found")
-        }
-      }, error = function(e) {
-        stop("Failed to load MetaCyc to EC mapping: ", e$message)
-      })
-    }
-    
-    # Convert to data frame
-    metacyc_to_ec_reference <- as.data.frame(metacyc_to_ec_reference)
-    
-    # Create gene sets list
+    # Load MetaCyc to EC mapping using unified loader
+    metacyc_to_ec_reference <- load_reference_data("metacyc_to_ec")
+
+    # Create gene sets list from MetaCyc pathways
     gene_sets <- list()
-    
-    for (i in 1:nrow(metacyc_to_ec_reference)) {
+    for (i in seq_len(nrow(metacyc_to_ec_reference))) {
       pathway_id <- metacyc_to_ec_reference[i, "pathway"]
       ec_string <- as.character(metacyc_to_ec_reference[i, "ec_numbers"])
-      
+
       # Skip pathways with no EC mappings
       if (is.na(ec_string) || ec_string == "" || ec_string == "NA") {
         next
       }
-      
-      # Split EC numbers by semicolon
+
+      # Split EC numbers by semicolon and clean
       ec_numbers <- strsplit(ec_string, ";")[[1]]
-      ec_numbers <- trimws(ec_numbers)  # Remove whitespace
-      ec_numbers <- ec_numbers[ec_numbers != ""]  # Remove empty strings
-      
+      ec_numbers <- trimws(ec_numbers)
+      ec_numbers <- ec_numbers[ec_numbers != ""]
+
       if (length(ec_numbers) > 0) {
         # Add EC: prefix if not present for consistency
         ec_numbers <- ifelse(grepl("^EC:", ec_numbers), ec_numbers, paste0("EC:", ec_numbers))
         gene_sets[[pathway_id]] <- ec_numbers
       }
     }
-    
+
   } else if (pathway_type == "GO") {
-    # Load KO to GO mapping
-    tryCatch({
-      data("ko_to_go_reference", package = "ggpicrust2", envir = environment())
-    }, error = function(e) {
-      # Create basic GO mapping if reference data doesn't exist
-      message("Creating basic GO mapping (reference data not found)")
-    })
-    
-    # Always create mapping if it doesn't exist
-    if (!exists("ko_to_go_reference", envir = environment())) {
-      ko_to_go_reference <- create_basic_go_mapping()
+    # Load GO reference using unified loader
+    go_reference <- load_reference_data("ko_to_go")
+
+    # Derive valid categories from the actual reference data
+    available_categories <- if ("category" %in% colnames(go_reference)) {
+      unique(go_reference$category)
+    } else {
+      character(0)
     }
-    
-    # Convert to data frame format required for GSEA
-    go_reference <- as.data.frame(ko_to_go_reference)
-    
-    # Validate and filter by GO category if specified
-    valid_go_categories <- c("BP", "MF", "CC", "all")
-    if (!is.null(go_category) && !go_category %in% valid_go_categories) {
-      stop(sprintf("Invalid go_category '%s'. Must be one of: %s", 
-                   go_category, paste(valid_go_categories, collapse = ", ")))
+
+    # Validate go_category against what's actually in the data
+    if (!is.null(go_category) && go_category != "all" &&
+        !go_category %in% available_categories) {
+      stop(sprintf(
+        "go_category '%s' not found in reference data. Available: %s",
+        go_category, paste(c(available_categories, "all"), collapse = ", ")),
+        call. = FALSE)
     }
-    
-    if (!is.null(go_category) && go_category != "all" && go_category %in% c("BP", "MF", "CC")) {
-      if ("category" %in% colnames(go_reference)) {
-        go_reference <- go_reference[go_reference$category == go_category, ]
-      }
+
+    # Filter by category
+    if (!is.null(go_category) && go_category != "all" &&
+        "category" %in% colnames(go_reference)) {
+      go_reference <- go_reference[go_reference$category == go_category, ]
     }
-    
+
     # Create gene sets list for each GO term
     gene_sets <- list()
-    
-    for (i in 1:nrow(go_reference)) {
-      go_id <- go_reference[i, 1]  # First column contains GO IDs
-      
+
+    # Use seq_len to handle empty data frame correctly (1:0 returns c(1,0), not empty)
+    for (i in seq_len(nrow(go_reference))) {
+      go_id <- go_reference$go_id[i]
+
       # Get KO members for this GO term
       if ("ko_members" %in% colnames(go_reference)) {
-        ko_string <- go_reference[i, "ko_members"]
-        if (!is.na(ko_string) && ko_string != "") {
+        ko_string <- as.character(go_reference[i, "ko_members"])
+        if (!is.na(ko_string) && nchar(ko_string) > 0) {
           ko_ids <- unlist(strsplit(ko_string, ";"))
           ko_ids <- ko_ids[!is.na(ko_ids) & ko_ids != ""]
-          
+
           if (length(ko_ids) > 0) {
             gene_sets[[go_id]] <- ko_ids
           }
@@ -426,7 +524,7 @@ prepare_gene_sets <- function(pathway_type = "KEGG", organism = "ko", go_categor
         # Fallback: assume other columns contain KO IDs
         ko_ids <- as.character(go_reference[i, -1])
         ko_ids <- ko_ids[!is.na(ko_ids) & ko_ids != ""]
-        
+
         if (length(ko_ids) > 0) {
           gene_sets[[go_id]] <- ko_ids
         }
@@ -460,9 +558,23 @@ calculate_rank_metric <- function(abundance,
   
   # Subset abundance to include only samples in metadata
   common_samples <- intersect(colnames(abundance), names(Group))
-  abundance <- abundance[, common_samples]
+  abundance <- abundance[, common_samples, drop = FALSE]
   Group <- Group[common_samples]
-  
+
+  # Handle problematic values - replace with 0 (undetected features)
+  if (any(is.infinite(abundance))) {
+    warning("Abundance data contains Inf values. Replacing with 0.", call. = FALSE)
+    abundance[is.infinite(abundance)] <- 0
+  }
+  if (any(is.na(abundance))) {
+    warning("Abundance data contains NA values. Replacing with 0.", call. = FALSE)
+    abundance[is.na(abundance)] <- 0
+  }
+  if (any(abundance < 0)) {
+    warning("Abundance data contains negative values. Replacing with 0.", call. = FALSE)
+    abundance[abundance < 0] <- 0
+  }
+
   # Group size validation already done above in main function
   
   # Get unique group levels
@@ -484,9 +596,13 @@ calculate_rank_metric <- function(abundance,
     sd1 <- apply(abundance[, group1_samples, drop = FALSE], 1, stats::sd)
     sd2 <- apply(abundance[, group2_samples, drop = FALSE], 1, stats::sd)
     
-    # Handle zero standard deviations
-    sd1[sd1 == 0] <- 0.00001
-    sd2[sd2 == 0] <- 0.00001
+    # Handle zero standard deviations using GSEA-style minimum
+    # GSEA uses: sigma_min = 0.2 * |mu|, where mu=0 is adjusted to mu=1
+    # This ensures the floor is proportional to the data scale
+    adjusted_mean1 <- ifelse(mean1 == 0, 1, abs(mean1))
+    adjusted_mean2 <- ifelse(mean2 == 0, 1, abs(mean2))
+    sd1 <- pmax(sd1, 0.2 * adjusted_mean1)
+    sd2 <- pmax(sd2, 0.2 * adjusted_mean2)
     
     metric <- (mean1 - mean2) / (sd1 + sd2)
     # Ensure names are preserved - critical for fgsea
@@ -497,7 +613,7 @@ calculate_rank_metric <- function(abundance,
     metric <- numeric(nrow(abundance))
     names(metric) <- rownames(abundance)
     
-    for (i in 1:nrow(abundance)) {
+    for (i in seq_len(nrow(abundance))) {
       t_test <- stats::t.test(abundance[i, group1_samples], abundance[i, group2_samples])
       metric[i] <- t_test$statistic
     }
@@ -506,11 +622,13 @@ calculate_rank_metric <- function(abundance,
     # Log2 fold change
     mean1 <- rowMeans(abundance[, group1_samples, drop = FALSE])
     mean2 <- rowMeans(abundance[, group2_samples, drop = FALSE])
-    
-    # Add small constant to avoid division by zero
-    mean1[mean1 == 0] <- 0.00001
-    mean2[mean2 == 0] <- 0.00001
-    
+
+    # Calculate pseudocount using unified function
+    # Note: GSEA uses mean1/mean2 direction (group1/group2)
+    pseudocount <- calculate_pseudocount(c(mean1, mean2))
+    mean1[mean1 == 0] <- pseudocount
+    mean2[mean2 == 0] <- pseudocount
+
     metric <- log2(mean1 / mean2)
     # Ensure names are preserved - critical for fgsea
     names(metric) <- rownames(abundance)
@@ -527,34 +645,28 @@ calculate_rank_metric <- function(abundance,
   return(metric)
 }
 
-#' Run fast GSEA implementation
+#' Run fgsea using the recommended fgseaMultilevel method
 #'
 #' @param ranked_list A named vector of ranking statistics
 #' @param gene_sets A list of pathway gene sets
-#' @param nperm An integer specifying the number of permutations
 #' @param min_size An integer specifying the minimum gene set size
 #' @param max_size An integer specifying the maximum gene set size
 #'
 #' @return A data frame of fgsea results
 #' @keywords internal
-run_fgsea <- function(ranked_list, 
-                     gene_sets, 
-                     nperm = 1000, 
-                     min_size = 10, 
+run_fgsea <- function(ranked_list,
+                     gene_sets,
+                     min_size = 10,
                      max_size = 500) {
-  
-  # Check if fgsea package is available
-  if (!requireNamespace("fgsea", quietly = TRUE)) {
-    stop("Package 'fgsea' is required. Please install it using BiocManager::install('fgsea').")
-  }
-  
-  # Run fgsea
+  # Use fgseaMultilevel (default when nperm is NOT passed).
+  # fgseaMultilevel uses adaptive multilevel splitting Monte Carlo,
+  # which provides accurate p-values without a fixed permutation count.
+  # Passing nperm would force the deprecated fgseaSimple method.
   fgsea_result <- fgsea::fgsea(
     pathways = gene_sets,
     stats = ranked_list,
     minSize = min_size,
-    maxSize = max_size,
-    nperm = nperm
+    maxSize = max_size
   )
   
   # Convert to data frame and handle empty results
@@ -575,134 +687,253 @@ run_fgsea <- function(ranked_list,
       stringsAsFactors = FALSE
     )
   } else {
-    # Return empty data frame with correct column structure
-    results <- data.frame(
-      pathway_id = character(),
-      pathway_name = character(),
-      size = integer(),
-      ES = numeric(),
-      NES = numeric(),
-      pvalue = numeric(),
-      p.adjust = numeric(),
-      leading_edge = character(),
-      stringsAsFactors = FALSE
-    )
+    results <- create_empty_gsea_result(full = TRUE)
   }
-  
+
   return(results)
 }
 
-#' Create basic GO mapping for microbiome analysis
+#' Run limma-based gene set analysis (camera/fry)
 #'
-#' This function creates a basic KO to GO term mapping that covers
-#' common functional categories relevant to microbiome research.
+#' This internal function implements limma's camera and fry methods for gene set
+#' enrichment analysis with support for covariates.
 #'
-#' @return A data frame containing basic GO term mappings
+#' @param abundance_mat A matrix of abundance data with features as rows and samples as columns
+#' @param metadata A data frame containing sample metadata
+#' @param group A character string specifying the grouping variable column name
+#' @param covariates A character vector of covariate column names (optional)
+#' @param contrast Contrast specification for multi-group comparisons (optional)
+#' @param gene_sets A named list of gene sets (pathway -> gene IDs)
+#' @param method Either "camera" or "fry"
+#' @param inter.gene.cor Inter-gene correlation for camera (default 0.01)
+#' @param min_size Minimum gene set size
+#' @param max_size Maximum gene set size
+#' @param p.adjust.method P-value adjustment method
+#'
+#' @return A data frame containing gene set analysis results
 #' @keywords internal
-create_basic_go_mapping <- function() {
-  # Create a basic KO to GO mapping
-  # This includes common GO terms relevant to microbiome analysis
-  
-  basic_go_terms <- data.frame(
-    go_id = c(
-      "GO:0006096", "GO:0006099", "GO:0006631", "GO:0006520",
-      "GO:0019682", "GO:0015980", "GO:0006163", "GO:0006508",
-      "GO:0006412", "GO:0006979", "GO:0006810", "GO:0005975",
-      "GO:0008152", "GO:0009058", "GO:0009056", "GO:0006629",
-      "GO:0006950", "GO:0006511", "GO:0006464", "GO:0006355"
-    ),
-    go_name = c(
-      "Glycolytic process", "Tricarboxylic acid cycle", "Fatty acid metabolic process",
-      "Cellular amino acid metabolic process", "Glyceraldehyde-3-phosphate metabolic process",
-      "Energy derivation by oxidation of organic compounds", "Purine nucleotide metabolic process",
-      "Proteolysis", "Translation", "Response to oxidative stress",
-      "Transport", "Carbohydrate metabolic process",
-      "Metabolic process", "Biosynthetic process", "Catabolic process", "Lipid metabolic process",
-      "Response to stress", "Protein ubiquitination", "Cellular protein modification process", "Regulation of transcription, DNA-templated"
-    ),
-    category = c(
-      "BP", "BP", "BP", "BP", "BP", "BP", "BP", "BP", "BP", "BP", "BP", "BP",
-      "BP", "BP", "BP", "BP", "BP", "BP", "BP", "BP"
-    ),
-    ko_members = c(
-      "K00134;K01810;K00927;K01623;K01803;K00850",
-      "K01902;K01903;K00031;K00164;K00382;K01647",
-      "K00059;K00625;K01895;K07512;K00626;K01897",
-      "K01915;K00928;K01914;K02204;K00812;K01776",
-      "K00134;K01623;K00927;K00150;K01803;K00850",
-      "K00164;K00382;K00031;K01902;K01903;K01647",
-      "K00088;K00759;K01756;K00948;K01633;K00939",
-      "K01419;K08303;K01273;K08602;K01417;K01362",
-      "K02519;K02543;K02992;K02946;K02874;K02878",
-      "K04068;K03781;K00432;K05919;K00540;K03386",
-      "K03076;K05685;K03327;K09687;K03406;K03088",
-      "K01810;K00134;K01623;K00927;K01803;K00850",
-      "K00001;K00002;K00003;K00004;K00005;K00006",
-      "K01915;K01914;K01776;K01889;K01845;K01858",
-      "K01689;K01690;K01692;K01693;K01694;K01695",
-      "K00059;K00625;K01895;K07512;K00626;K01897",
-      "K04068;K03781;K00432;K05919;K00540;K03386",
-      "K08770;K08771;K08772;K08773;K08774;K08775",
-      "K02204;K03100;K03101;K03102;K03103;K03104",
-      "K03040;K03041;K03042;K03043;K03044;K03045"
-    ),
-    stringsAsFactors = FALSE
-  )
-  
-  # Add molecular function terms
-  mf_terms <- data.frame(
-    go_id = c(
-      "GO:0003824", "GO:0016740", "GO:0016787", "GO:0005215",
-      "GO:0003677", "GO:0003723", "GO:0016491", "GO:0016853"
-    ),
-    go_name = c(
-      "Catalytic activity", "Transferase activity", "Hydrolase activity", "Transporter activity",
-      "DNA binding", "RNA binding", "Oxidoreductase activity", "Isomerase activity"
-    ),
-    category = c(
-      "MF", "MF", "MF", "MF", "MF", "MF", "MF", "MF"
-    ),
-    ko_members = c(
-      "K00001;K00002;K00003;K00004;K00005;K00006",
-      "K00928;K01914;K01915;K02204;K00812;K01776",
-      "K01419;K08303;K01273;K08602;K01417;K01362",
-      "K03076;K05685;K03327;K09687;K03406;K03088",
-      "K03040;K03041;K03042;K03043;K03044;K03045",
-      "K02519;K02543;K02992;K02946;K02874;K02878",
-      "K00164;K00382;K00031;K01902;K01903;K01647",
-      "K01803;K01804;K01805;K01806;K01807;K01808"
-    ),
-    stringsAsFactors = FALSE
-  )
-  
-  # Add cellular component terms
-  cc_terms <- data.frame(
-    go_id = c(
-      "GO:0016020", "GO:0005737", "GO:0005829", "GO:0030312",
-      "GO:0005886", "GO:0016021", "GO:0022626", "GO:0005840"
-    ),
-    go_name = c(
-      "Membrane", "Cytoplasm", "Cytosol", "External encapsulating structure",
-      "Plasma membrane", "Integral component of membrane", "Cytosolic ribosome", "Ribosome"
-    ),
-    category = c(
-      "CC", "CC", "CC", "CC", "CC", "CC", "CC", "CC"
-    ),
-    ko_members = c(
-      "K03076;K05685;K03327;K09687;K03406;K03088",
-      "K00134;K01810;K00927;K01623;K01803;K00850",
-      "K00164;K00382;K00031;K01902;K01903;K01647",
-      "K01419;K08303;K01273;K08602;K01417;K01362",
-      "K03076;K05685;K03327;K09687;K03406;K03088",
-      "K03076;K05685;K03327;K09687;K03406;K03088",
-      "K02519;K02543;K02992;K02946;K02874;K02878",
-      "K02519;K02543;K02992;K02946;K02874;K02878"
-    ),
-    stringsAsFactors = FALSE
-  )
-  
-  # Combine all terms
-  go_mapping <- rbind(basic_go_terms, mf_terms, cc_terms)
-  
-  return(go_mapping)
+run_limma_gsea <- function(abundance_mat,
+                           metadata,
+                           group,
+                           covariates = NULL,
+                           contrast = NULL,
+                           gene_sets,
+                           method = "camera",
+                           inter.gene.cor = 0.01,
+                           min_size = 5,
+                           max_size = 500,
+                           p.adjust.method = "BH") {
+  # Samples are already aligned by the caller (pathway_gsea)
+  abundance_mat <- as.matrix(abundance_mat)
+
+  # Build design matrix
+  design <- build_design_matrix(metadata, group, covariates)
+
+  # Determine which coefficient to test
+  # For a design with intercept + group, the group coefficient is typically column 2
+  # For a design without intercept (0 + group), we need to construct a contrast
+  group_levels <- levels(factor(metadata[[group]]))
+
+  if (is.null(contrast)) {
+    # Default: test the group effect (second column for intercept model)
+    # or construct a contrast for no-intercept model
+    if (ncol(design) >= 2 && grepl(group, colnames(design)[2])) {
+      # Intercept model: test second coefficient
+      contrast_coef <- 2
+    } else {
+      # Create contrast: second group vs first group
+      contrast_coef <- 2
+    }
+  } else if (is.numeric(contrast)) {
+    contrast_coef <- contrast
+  } else if (is.character(contrast)) {
+    # Find the column matching the contrast
+    contrast_col <- grep(contrast, colnames(design))
+    if (length(contrast_col) == 0) {
+      stop("Contrast '", contrast, "' not found in design matrix columns: ",
+           paste(colnames(design), collapse = ", "))
+    }
+    contrast_coef <- contrast_col[1]
+  } else {
+    contrast_coef <- 2
+  }
+
+  # Convert gene sets to index format for limma
+  # gene_sets is a named list: pathway_id -> vector of gene IDs
+  # We need to convert to row indices in abundance_mat
+  feature_names <- rownames(abundance_mat)
+  gene_set_indices <- lapply(gene_sets, function(genes) {
+    which(feature_names %in% genes)
+  })
+
+  # Filter gene sets by size
+  gene_set_sizes <- sapply(gene_set_indices, length)
+  valid_sets <- gene_set_sizes >= min_size & gene_set_sizes <= max_size
+
+  if (sum(valid_sets) == 0) {
+    warning("No gene sets passed the size filter (min_size=", min_size,
+            ", max_size=", max_size, "). Returning empty results.")
+    return(create_empty_gsea_result(method))
+  }
+
+  gene_set_indices <- gene_set_indices[valid_sets]
+  message(sprintf("Testing %d gene sets (filtered from %d by size constraints)",
+                  length(gene_set_indices), length(gene_sets)))
+
+  # Handle problematic values before voom transformation
+  # voom/limma do not accept NA, Inf, or negative values in count data
+
+  # Handle Inf/-Inf values first
+  if (any(is.infinite(abundance_mat))) {
+    inf_count <- sum(is.infinite(abundance_mat))
+    warning(sprintf("Abundance data contains %d Inf/-Inf values. ",
+                    inf_count),
+            "Replacing with 0.",
+            call. = FALSE)
+    abundance_mat[is.infinite(abundance_mat)] <- 0
+  }
+
+  # Handle NA values
+  if (any(is.na(abundance_mat))) {
+    na_count <- sum(is.na(abundance_mat))
+    na_features <- sum(rowSums(is.na(abundance_mat)) > 0)
+    warning(sprintf("Abundance data contains %d NA values in %d features. ",
+                    na_count, na_features),
+            "Replacing NA with 0 (assuming undetected features).",
+            call. = FALSE)
+    abundance_mat[is.na(abundance_mat)] <- 0
+  }
+
+  # Handle negative values (voom expects count-like data)
+  if (any(abundance_mat < 0)) {
+    neg_count <- sum(abundance_mat < 0)
+    warning(sprintf("Abundance data contains %d negative values. ",
+                    neg_count),
+            "Replacing with 0 (voom expects non-negative count data).",
+            call. = FALSE)
+    abundance_mat[abundance_mat < 0] <- 0
+  }
+
+  # Apply voom transformation for count data
+  # First, add a small pseudocount to avoid log(0)
+  abundance_mat <- abundance_mat + 0.5
+
+  # Use limma-voom for count data transformation
+  # This estimates the mean-variance relationship and computes precision weights
+  tryCatch({
+    v <- limma::voom(abundance_mat, design, plot = FALSE)
+  }, error = function(e) {
+    # Fallback: use log2 transformation if voom fails
+    warning("voom transformation failed, using log2 transformation instead: ", e$message)
+    v <<- list(
+      E = log2(abundance_mat),
+      weights = matrix(1, nrow = nrow(abundance_mat), ncol = ncol(abundance_mat))
+    )
+    class(v) <<- "EList"
+  })
+
+  # Run the selected method
+  if (method == "camera") {
+    # Camera: competitive gene set test
+    # Accounts for inter-gene correlations
+    results <- limma::camera(
+      y = v,
+      index = gene_set_indices,
+      design = design,
+      contrast = contrast_coef,
+      inter.gene.cor = inter.gene.cor
+    )
+
+  } else if (method == "fry") {
+    # Fry: fast rotation gene set test (self-contained)
+    results <- limma::fry(
+      y = v,
+      index = gene_set_indices,
+      design = design,
+      contrast = contrast_coef
+    )
+  }
+
+  # Format results
+  if (nrow(results) > 0) {
+    # Add pathway IDs from rownames
+    results$pathway_id <- rownames(results)
+
+    # Standardize column names
+    formatted_results <- data.frame(
+      pathway_id = results$pathway_id,
+      pathway_name = results$pathway_id,  # Will be annotated later if mapping available
+      size = results$NGenes,
+      direction = results$Direction,
+      pvalue = results$PValue,
+      p.adjust = stats::p.adjust(results$PValue, method = p.adjust.method),
+      method = method,
+      stringsAsFactors = FALSE
+    )
+
+    # Add FDR from results if available (camera/fry compute their own FDR)
+    if ("FDR" %in% colnames(results)) {
+      formatted_results$FDR_original <- results$FDR
+    }
+
+    # Add synthetic NES for visualization compatibility
+    # Camera/fry don't produce NES, so we create a synthetic measure based on
+    # direction and -log10(pvalue) for visualization purposes
+    formatted_results$NES <- ifelse(
+      formatted_results$direction == "Up",
+      -log10(pmax(formatted_results$pvalue, 1e-300)),  # Positive for Up
+      log10(pmax(formatted_results$pvalue, 1e-300))     # Negative for Down
+    )
+
+    # Add a leading_edge placeholder for visualization compatibility
+    formatted_results$leading_edge <- ""
+
+    # Sort by p-value
+    formatted_results <- formatted_results[order(formatted_results$pvalue), ]
+    rownames(formatted_results) <- NULL
+
+  } else {
+    formatted_results <- create_empty_gsea_result(method)
+  }
+
+  return(formatted_results)
+}
+
+#' Build design matrix for limma analysis
+#'
+#' Creates a design matrix incorporating the group variable and optional covariates.
+#'
+#' @param metadata A data frame containing sample metadata
+#' @param group A character string specifying the grouping variable column name
+#' @param covariates A character vector of covariate column names (optional)
+#'
+#' @return A design matrix suitable for limma
+#' @keywords internal
+build_design_matrix <- function(metadata, group, covariates = NULL) {
+
+  # Ensure group is a factor
+  metadata[[group]] <- factor(metadata[[group]])
+
+  # Build formula
+  if (is.null(covariates) || length(covariates) == 0) {
+    # Simple formula: ~ group
+    formula_str <- paste("~", group)
+  } else {
+    # Formula with covariates: ~ group + cov1 + cov2 + ...
+    # Ensure covariates are properly formatted
+    for (cov in covariates) {
+      if (is.character(metadata[[cov]])) {
+        metadata[[cov]] <- factor(metadata[[cov]])
+      }
+    }
+    formula_str <- paste("~", group, "+", paste(covariates, collapse = " + "))
+  }
+
+  # Create design matrix
+  design <- stats::model.matrix(stats::as.formula(formula_str), data = metadata)
+
+  # Clean up column names for readability
+  colnames(design) <- gsub("\\(Intercept\\)", "Intercept", colnames(design))
+
+  return(design)
 }

@@ -1,0 +1,334 @@
+---
+title: "Gene Set Enrichment Analysis with ggpicrust2"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Gene Set Enrichment Analysis with ggpicrust2}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5
+)
+```
+
+## Introduction
+
+This vignette demonstrates how to perform Gene Set Enrichment Analysis (GSEA) on PICRUSt2 predicted functional data using the ggpicrust2 package. GSEA is a powerful method for interpreting gene expression data by focusing on gene sets (pathways) rather than individual genes. In the context of microbiome functional prediction, GSEA can help identify pathways that are enriched in different conditions.
+
+## Installation
+
+First, make sure you have the necessary packages installed:
+
+```{r setup, eval=FALSE}
+# Install ggpicrust2
+if (!requireNamespace("ggpicrust2", quietly = TRUE)) {
+  devtools::install_github("cafferychen777/ggpicrust2")
+}
+
+# Install required Bioconductor packages
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+  install.packages("BiocManager")
+}
+
+BiocManager::install(c("limma", "fgsea", "clusterProfiler", "enrichplot", "DOSE", "pathview"))
+
+# Load the package
+library(ggpicrust2)
+library(dplyr)
+library(ggplot2)
+```
+
+## Method Selection Guide
+
+The `pathway_gsea()` function supports multiple methods for gene set enrichment analysis:
+
+| Method | Type | Covariate Support | Description |
+|--------|------|-------------------|-------------|
+| `camera` (default) | Competitive | ✅ Yes | **Recommended.** Accounts for inter-gene correlations, providing more reliable p-values |
+| `fry` | Self-contained | ✅ Yes | Fast rotation test, efficient for large gene set collections |
+| `fgsea` | Preranked | ❌ No | Fast preranked GSEA, but p-values may be unreliable |
+| `clusterProfiler` | Preranked | ❌ No | Traditional GSEA implementation |
+
+**Why use camera/fry?** Wu et al. (2012) demonstrated that preranked GSEA methods can produce "spectacularly wrong p-values" due to not accounting for inter-gene correlations. The `camera` and `fry` methods from limma address this limitation.
+
+## Basic GSEA Analysis (Recommended: camera method)
+
+Let's start with a basic GSEA analysis using the recommended `camera` method:
+
+```{r basic-gsea, eval=FALSE}
+# Load example data
+data(ko_abundance)
+data(metadata)
+
+# Prepare abundance data
+abundance_data <- as.data.frame(ko_abundance)
+rownames(abundance_data) <- abundance_data[, "#NAME"]
+abundance_data <- abundance_data[, -1]
+
+# Run GSEA analysis with camera (recommended)
+gsea_results <- pathway_gsea(
+  abundance = abundance_data,
+  metadata = metadata,
+  group = "Environment",
+  pathway_type = "KEGG",
+  method = "camera",
+  min_size = 5,
+  max_size = 500,
+  p.adjust = "BH"
+)
+
+# View the top results
+head(gsea_results)
+```
+
+## Covariate Adjustment
+
+One of the most powerful features of the `camera` and `fry` methods is the ability to adjust for confounding variables. This is particularly important in microbiome studies where factors like age, sex, BMI, and batch effects can influence results.
+
+```{r covariate-gsea, eval=FALSE}
+# Example with covariate adjustment
+# Assuming metadata has columns: group, age, sex, BMI
+
+gsea_results_adjusted <- pathway_gsea(
+  abundance = abundance_data,
+  metadata = metadata,
+  group = "Disease",
+  covariates = c("age", "sex", "BMI"),  # Adjust for these confounders
+  pathway_type = "KEGG",
+  method = "camera"
+)
+
+# The results now reflect the group effect after adjusting for confounders
+head(gsea_results_adjusted)
+```
+
+## Fast Analysis with fry
+
+For large datasets or when computational efficiency is important, use the `fry` method:
+
+```{r fry-gsea, eval=FALSE}
+# Fast rotation gene set test
+gsea_results_fry <- pathway_gsea(
+  abundance = abundance_data,
+  metadata = metadata,
+  group = "Environment",
+  pathway_type = "KEGG",
+  method = "fry",
+  min_size = 5,
+  max_size = 500
+)
+
+head(gsea_results_fry)
+```
+
+## Legacy: Preranked GSEA (fgsea)
+
+For compatibility with existing workflows, preranked GSEA methods are still available:
+
+```{r fgsea, eval=FALSE}
+# Note: Preranked methods don't account for inter-gene correlations
+# P-values may be less reliable (Wu et al., 2012)
+gsea_results_fgsea <- pathway_gsea(
+  abundance = abundance_data,
+  metadata = metadata,
+  group = "Environment",
+  pathway_type = "KEGG",
+  method = "fgsea",
+  rank_method = "signal2noise",
+  nperm = 1000,
+  min_size = 10,
+  max_size = 500,
+  p.adjust = "BH",
+  seed = 42
+)
+
+# View the top results
+head(gsea_results_fgsea)
+```
+
+## Annotating GSEA Results
+
+To make the results more interpretable, we can annotate them with pathway names and descriptions:
+
+```{r annotate-gsea, eval=FALSE}
+# Annotate GSEA results
+annotated_results <- gsea_pathway_annotation(
+  gsea_results = gsea_results,
+  pathway_type = "KEGG"
+)
+
+# View the annotated results
+head(annotated_results)
+```
+
+## Visualizing GSEA Results
+
+The ggpicrust2 package provides several visualization options for GSEA results. The `visualize_gsea()` function automatically detects whether pathway names are available (from `gsea_pathway_annotation()`) and uses them for better readability, falling back to pathway IDs if names are not available.
+
+### Pathway Label Options
+
+The `visualize_gsea()` function offers flexible pathway labeling:
+
+```{r pathway-labels, eval=FALSE}
+# Option 1: Use raw GSEA results (shows pathway IDs)
+plot_with_ids <- visualize_gsea(
+  gsea_results = gsea_results,
+  plot_type = "barplot",
+  n_pathways = 10
+)
+
+# Option 2: Use annotated results (automatically shows pathway names)
+plot_with_names <- visualize_gsea(
+  gsea_results = annotated_results,
+  plot_type = "barplot",
+  n_pathways = 10
+)
+
+# Option 3: Explicitly specify which column to use for labels
+plot_custom_labels <- visualize_gsea(
+  gsea_results = annotated_results,
+  plot_type = "barplot",
+  pathway_label_column = "pathway_name",
+  n_pathways = 10
+)
+
+# Compare the plots
+plot_with_ids
+plot_with_names
+plot_custom_labels
+```
+
+### Barplot
+
+```{r barplot, eval=FALSE}
+# Create a barplot of the top enriched pathways
+barplot <- visualize_gsea(
+  gsea_results = annotated_results,
+  plot_type = "barplot",
+  n_pathways = 20,
+  sort_by = "p.adjust"
+)
+
+# Display the plot
+barplot
+```
+
+### Dotplot
+
+```{r dotplot, eval=FALSE}
+# Create a dotplot of the top enriched pathways
+dotplot <- visualize_gsea(
+  gsea_results = annotated_results,
+  plot_type = "dotplot",
+  n_pathways = 20,
+  sort_by = "p.adjust"
+)
+
+# Display the plot
+dotplot
+```
+
+### Enrichment Plot
+
+```{r enrichment-plot, eval=FALSE}
+# Create an enrichment plot for a specific pathway
+enrichment_plot <- visualize_gsea(
+  gsea_results = annotated_results,
+  plot_type = "enrichment_plot",
+  n_pathways = 10,
+  sort_by = "NES"
+)
+
+# Display the plot
+enrichment_plot
+```
+
+### Ridge Plot
+
+Ridge plots (also known as joy plots) provide a powerful way to visualize the distribution of gene abundances or fold changes within enriched pathways. This helps understand whether pathways are predominantly up- or down-regulated.
+
+```{r ridge-plot, eval=FALSE}
+# Create a ridge plot for GSEA results
+# Note: Requires ggridges package to be installed
+ridge_plot <- pathway_ridgeplot(
+  gsea_results = gsea_results,
+  abundance = abundance_data,
+  metadata = metadata,
+  group = "Environment",
+  pathway_type = "KEGG",
+  n_pathways = 10,
+  sort_by = "p.adjust",
+  show_direction = TRUE,
+  colors = c("Down" = "#3182bd", "Up" = "#de2d26")
+)
+
+# Display the plot
+ridge_plot
+```
+
+The ridge plot shows:
+- Each pathway as a density ridge
+- Color indicates enrichment direction (Up = red, Down = blue)
+- The distribution of log2 fold changes for genes within each pathway
+- A vertical dashed line at 0 for reference
+
+## Comparing GSEA and DAA Results
+
+It can be informative to compare the results from GSEA with those from Differential Abundance Analysis (DAA):
+
+```{r compare-gsea-daa, eval=FALSE}
+# Run DAA analysis
+daa_results <- pathway_daa(
+  abundance = abundance_data,
+  metadata = metadata,
+  group = "Environment",
+  daa_method = "ALDEx2"
+)
+
+# Annotate DAA results
+annotated_daa_results <- pathway_annotation(
+  pathway = "KO",
+  daa_results_df = daa_results,
+  ko_to_kegg = TRUE
+)
+
+# Compare GSEA and DAA results
+comparison <- compare_gsea_daa(
+  gsea_results = annotated_results,
+  daa_results = annotated_daa_results,
+  plot_type = "venn",
+  p_threshold = 0.05
+)
+
+# Display the comparison plot
+comparison$plot
+
+# View the comparison results
+comparison$results
+```
+
+## Conclusion
+
+Gene Set Enrichment Analysis provides a complementary approach to Differential Abundance Analysis for interpreting PICRUSt2 predicted functional data. By focusing on pathways rather than individual features, GSEA can help identify biologically meaningful patterns that might be missed by traditional methods.
+
+### Key Recommendations
+
+1. **Use `camera` method (default)** for most analyses - it provides more reliable p-values by accounting for inter-gene correlations
+
+2. **Adjust for covariates** when you have confounding factors like age, sex, or BMI in your study design
+
+3. **Use `fry` method** when you need faster computation for large gene set collections
+
+4. **Use preranked methods (`fgsea`)** only when you need compatibility with existing workflows, and interpret p-values with caution
+
+### References
+
+- Wu, D., & Smyth, G. K. (2012). Camera: a competitive gene set test accounting for inter-gene correlation. *Nucleic Acids Research*, 40(17), e133.
+- Wu, D., et al. (2010). ROAST: rotation gene set tests for complex microarray experiments. *Bioinformatics*, 26(17), 2176-2182.
+
+The ggpicrust2 package now offers a comprehensive suite of tools for both DAA and GSEA analyses, making it easier to gain insights from microbiome functional prediction data.

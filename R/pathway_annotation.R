@@ -1,127 +1,5 @@
-#' Read and validate input file
-#' @param file_path Path to the input file
-#' @return Abundance data frame
-#' @noRd
-read_abundance_file <- function(file_path) {
-  if (!file.exists(file_path)) {
-    stop("File does not exist: ", file_path)
-  }
-  
-  file_ext <- tolower(tools::file_ext(file_path))
-  valid_formats <- c("txt", "tsv", "csv")
-  
-  if (!file_ext %in% valid_formats) {
-    stop(
-      "Invalid file format. Please input file in .tsv, .txt or .csv format. ",
-      "The best input file format is the output file from PICRUSt2, ",
-      "specifically 'pred_metagenome_unstrat.tsv'."
-    )
-  }
-  
-  delimiter <- if (file_ext == "csv") "," else "\t"
-  
-  tryCatch({
-    abundance <- readr::read_delim(
-      file_path,
-      delim = delimiter,
-      show_col_types = FALSE,
-      progress = FALSE
-    )
-    
-    if (ncol(abundance) < 2) {
-      stop("Input file must contain at least two columns")
-    }
-    
-    abundance %>% tibble::add_column(description = NA, .after = 1)
-  }, 
-  error = function(e) {
-    stop("Error reading file: ", e$message)
-  })
-}
-
-#' Load reference data for pathway annotation
-#' @param pathway_type One of "KO", "EC", or "MetaCyc"
-#' @return Reference data list
-#' @noRd
-load_reference_data <- function(pathway_type) {
-  if (!pathway_type %in% c("KO", "EC", "MetaCyc")) {
-    stop("Invalid pathway option. Please provide one of the following options: 'KO', 'EC', 'MetaCyc'.")
-  }
-
-  ref_file <- sprintf("%s_reference.RData", pathway_type)
-
-  # First try to load from data/ (lazy loading)
-  ref_data_name <- paste0(pathway_type, "_reference")
-  if (exists(ref_data_name, envir = asNamespace("ggpicrust2"))) {
-    ref_data <- get(ref_data_name, envir = asNamespace("ggpicrust2"))
-
-    # FIX: Standardize column names for MetaCyc, EC, and KO
-    if (pathway_type == "MetaCyc" && all(c("X1", "X2") %in% colnames(ref_data))) {
-      colnames(ref_data) <- c("id", "description")
-    }
-    if (pathway_type == "EC" && all(c("V1", "V2") %in% colnames(ref_data))) {
-      colnames(ref_data) <- c("id", "description")
-    }
-    if (pathway_type == "KO" && all(c("KO", "KoDescription") %in% colnames(ref_data))) {
-      # For KO data, map KO -> id and KoDescription -> description
-      ref_data <- ref_data[, c("KO", "KoDescription")]
-      colnames(ref_data) <- c("id", "description")
-    }
-
-    return(ref_data)
-  }
-
-  # If not found in data/, try inst/extdata/
-  ref_path <- system.file("extdata", ref_file, package = "ggpicrust2", mustWork = FALSE)
-
-  if (file.exists(ref_path)) {
-    load(ref_path)
-    ref_data <- get(ref_data_name)
-
-    # FIX: Standardize column names for MetaCyc, EC, and KO
-    if (pathway_type == "MetaCyc" && all(c("X1", "X2") %in% colnames(ref_data))) {
-      colnames(ref_data) <- c("id", "description")
-    }
-    if (pathway_type == "EC" && all(c("V1", "V2") %in% colnames(ref_data))) {
-      colnames(ref_data) <- c("id", "description")
-    }
-    if (pathway_type == "KO" && all(c("KO", "KoDescription") %in% colnames(ref_data))) {
-      # For KO data, map KO -> id and KoDescription -> description
-      ref_data <- ref_data[, c("KO", "KoDescription")]
-      colnames(ref_data) <- c("id", "description")
-    }
-
-    return(ref_data)
-  }
-
-  # If still not found, try loading from the package's installed location
-  ref_path <- system.file("inst/extdata", ref_file, package = "ggpicrust2", mustWork = FALSE)
-  if (file.exists(ref_path)) {
-    load(ref_path)
-    ref_data <- get(ref_data_name)
-
-    # FIX: Standardize column names for MetaCyc, EC, and KO
-    if (pathway_type == "MetaCyc" && all(c("X1", "X2") %in% colnames(ref_data))) {
-      colnames(ref_data) <- c("id", "description")
-    }
-    if (pathway_type == "EC" && all(c("V1", "V2") %in% colnames(ref_data))) {
-      colnames(ref_data) <- c("id", "description")
-    }
-    if (pathway_type == "KO" && all(c("KO", "KoDescription") %in% colnames(ref_data))) {
-      # For KO data, map KO -> id and KoDescription -> description
-      ref_data <- ref_data[, c("KO", "KoDescription")]
-      colnames(ref_data) <- c("id", "description")
-    }
-
-    return(ref_data)
-  }
-
-  # If we reach here, the file was not found in any location
-  stop(sprintf("Reference data file '%s' not found in any standard location.\nPlease ensure the package was installed correctly.", ref_file))
-
-  # This code is unreachable, just for reference
-  ref_data
-}
+# Note: read_abundance_file() is defined in data_utils.R
+# Note: load_reference_data() is defined in data_utils.R
 
 #' Cache manager for KEGG annotations
 #' @noRd
@@ -232,48 +110,33 @@ get_kegg_with_cache <- function(ko_id, organism = NULL) {
 #' @return Result or error
 #' @noRd
 with_retry <- function(expr, max_attempts = getOption("ggpicrust2.max_retries", 3)) {
-  attempt <- 1
-  
-  while (attempt <= max_attempts) {
+  for (attempt in seq_len(max_attempts)) {
     result <- tryCatch({
       if (is.function(expr)) expr() else if (is.expression(expr)) eval(expr) else expr
     }, error = function(e) {
-      # Special handling for HTTP 404 errors
-      if (grepl("HTTP 404", e$message)) {
-        # Return a special error object instead of NULL
-        # This allows the caller to distinguish between "resource not found" and "query failed"
-        return(structure(list(
-          status = "not_found",
-          message = e$message,
-          ko_id = NULL  # Caller can populate this
-        ), class = "kegg_error"))
-      }
-      
-      # Handle other errors
-      if (attempt == max_attempts) {
-        # Return a special error object
-        return(structure(list(
-          status = "failed",
-          message = e$message,
-          ko_id = NULL
-        ), class = "kegg_error"))
-      }
-      
-      log_message(sprintf("Attempt %d failed: %s, retrying...", attempt, e$message), "WARN")
-      Sys.sleep(min(2^attempt, 30))  # Limit maximum wait time to 30 seconds
-      NULL
+      structure(list(
+        status = if (grepl("HTTP 404", e$message)) "not_found" else "failed",
+        message = e$message,
+        ko_id = NULL
+      ), class = "kegg_error")
     })
-    
-    # If result is not NULL or is a special error object, return it
-    if (!is.null(result) || inherits(result, "kegg_error")) {
-      return(result)
+
+    # Success
+    if (!inherits(result, "kegg_error")) return(result)
+
+    # 404 is permanent — retrying won't help
+    if (result$status == "not_found") return(result)
+
+    # Transient failure: log and back off before next attempt
+    if (attempt < max_attempts) {
+      log_message(sprintf("Attempt %d/%d failed: %s, retrying...",
+                          attempt, max_attempts, result$message), "WARN")
+      Sys.sleep(min(2^attempt, 30))
     }
-    
-    attempt <- attempt + 1
   }
-  
-  # If all attempts fail, return NULL
-  NULL
+
+  # All retries exhausted: return last error (always a kegg_error, never NULL)
+  result
 }
 
 #' Enhanced logging system
@@ -303,67 +166,52 @@ create_progress_bar <- function(total, format = NULL) {
   )
 }
 
-#' Validate input parameters
-#' @noRd
-validate_inputs <- function(file, pathway, daa_results_df, ko_to_kegg) {
-  # File validation
-  if (!is.null(file)) {
-    if (!is.character(file) || length(file) != 1) {
-      stop("'file' must be a single character string")
-    }
-  }
-  
-  # Pathway validation
-  if (!is.null(pathway)) {
-    valid_pathways <- c("KO", "EC", "MetaCyc")
-    if (!pathway %in% valid_pathways) {
-      stop(sprintf("'pathway' must be one of: %s", 
-                  paste(valid_pathways, collapse = ", ")))
-    }
-  }
-  
-  # Data frame validation
-  if (!is.null(daa_results_df)) {
-    if (!is.data.frame(daa_results_df)) {
-      stop("'daa_results_df' must be a data frame")
-    }
-    if (ko_to_kegg) {
-      required_cols <- c("feature", "p_adjust")
-      missing_cols <- setdiff(required_cols, colnames(daa_results_df))
-      if (length(missing_cols) > 0) {
-        stop(sprintf("Missing required columns: %s", 
-                    paste(missing_cols, collapse = ", ")))
-      }
-    }
-  }
-}
-
 #' Process KEGG annotations with improved error handling and caching
 #' @param df Data frame with features to annotate
 #' @param organism KEGG organism code (e.g., 'hsa' for human)
 #' @return Annotated data frame
 #' @noRd
-process_kegg_annotations <- function(df, organism = NULL) {
+process_kegg_annotations <- function(df, organism = NULL, p_adjust_threshold = 0.05) {
   if (nrow(df) == 0) {
     stop("Empty data frame provided for KEGG annotation")
   }
-  
+
   # Filter for significant pathways
-  filtered_df <- df[df$p_adjust < 0.05, ]
-  
+  filtered_df <- df[which(df$p_adjust < p_adjust_threshold), ]
+
   # Handle case when no significant pathways are found
   if (nrow(filtered_df) == 0) {
+    min_p <- min(df$p_adjust, na.rm = TRUE)
+
     warning(
-      "No statistically significant biomarkers found (p_adjust < 0.05).\n",
-      "Returning results with empty annotation columns for visualization purposes.\n",
-      "Consider using a less stringent threshold if significant results are expected.",
+      "\n================================================================================\n",
+      "NO SIGNIFICANT PATHWAYS FOUND\n",
+      "================================================================================\n\n",
+      sprintf("pathway_annotation() filters results by p_adjust < %g threshold.\n", p_adjust_threshold),
+      "Your data contains no pathways meeting this criterion.\n\n",
+      "Statistics:\n",
+      "  Total features in input:       ", nrow(df), "\n",
+      sprintf("  Significant features (p<%g): 0\n", p_adjust_threshold),
+      "  Minimum p_adjust value:        ", sprintf("%.6f", min_p), "\n\n",
+      "Possible reasons:\n",
+      "  1. Insufficient statistical power (small sample size)\n",
+      "  2. Low biological effect size (small differences between groups)\n",
+      "  3. High biological variability in your samples\n",
+      "  4. DAA method may not be suitable for your data\n\n",
+      "Recommendations:\n",
+      "  1. Check input data quality and normalization\n",
+      "  2. Verify adequate sample size in each group\n",
+      "  3. Try alternative DAA methods (LinDA, DESeq2, edgeR)\n",
+      "  4. For annotation only, use ko_to_kegg = FALSE (uses local reference)\n\n",
+      "Returning data with NA annotation columns.\n",
+      "================================================================================\n",
       call. = FALSE
     )
-    
+
     # Return original data with empty annotation columns for compatibility
     new_cols <- c("pathway_name", "pathway_description", "pathway_class", "pathway_map")
     df[new_cols] <- NA_character_
-    
+
     log_message("No significant pathways found. Returning data with empty annotation columns.", "WARN")
     return(df)
   }
@@ -429,28 +277,41 @@ process_kegg_annotations <- function(df, organism = NULL) {
     if (!is.null(entry) && length(entry) > 0) {
       filtered_df$pathway_name[i] <- safe_extract(entry[[1]], "NAME", 1)
 
-      # Use PATHWAY field for pathway_description (contains pathway names)
-      if("PATHWAY" %in% names(entry[[1]]) && !is.null(entry[[1]][["PATHWAY"]]) && length(entry[[1]][["PATHWAY"]]) > 0) {
-        # Extract pathway names (values) and combine them
+      # Prefer PATHWAY (KO entries); fall back to DESCRIPTION (pathway entries).
+      if ("PATHWAY" %in% names(entry[[1]]) &&
+          !is.null(entry[[1]][["PATHWAY"]]) &&
+          length(entry[[1]][["PATHWAY"]]) > 0) {
         pathway_names <- as.character(entry[[1]][["PATHWAY"]])
         filtered_df$pathway_description[i] <- paste(pathway_names, collapse = "; ")
+      } else if ("DESCRIPTION" %in% names(entry[[1]]) &&
+                 !is.null(entry[[1]][["DESCRIPTION"]]) &&
+                 length(entry[[1]][["DESCRIPTION"]]) > 0) {
+        filtered_df$pathway_description[i] <- paste(as.character(entry[[1]][["DESCRIPTION"]]), collapse = "; ")
       } else {
         filtered_df$pathway_description[i] <- NA_character_
       }
 
-      # Use BRITE field for pathway_class (contains functional classification)
-      if("BRITE" %in% names(entry[[1]]) && !is.null(entry[[1]][["BRITE"]]) && length(entry[[1]][["BRITE"]]) > 0) {
-        # Extract first few BRITE classifications
+      # Use CLASS field for pathway_class (contains functional classification)
+      # KEGG returns CLASS, not BRITE for pathway entries
+      if("CLASS" %in% names(entry[[1]]) && !is.null(entry[[1]][["CLASS"]]) && length(entry[[1]][["CLASS"]]) > 0) {
+        # Extract CLASS field
+        pathway_class <- as.character(entry[[1]][["CLASS"]])
+        filtered_df$pathway_class[i] <- paste(pathway_class, collapse = "; ")
+      } else if("BRITE" %in% names(entry[[1]]) && !is.null(entry[[1]][["BRITE"]]) && length(entry[[1]][["BRITE"]]) > 0) {
+        # Fallback to BRITE if CLASS is not available
         brite_classes <- as.character(entry[[1]][["BRITE"]])
-        # Take first 3 classifications to avoid overly long strings
         filtered_df$pathway_class[i] <- paste(head(brite_classes, 3), collapse = "; ")
       } else {
         filtered_df$pathway_class[i] <- NA_character_
       }
 
-      # Use PATHWAY field for pathway_map (extract map IDs)
-      if("PATHWAY" %in% names(entry[[1]]) && !is.null(entry[[1]][["PATHWAY"]]) && length(entry[[1]][["PATHWAY"]]) > 0) {
-        # Extract pathway map IDs (names)
+      # Use PATHWAY_MAP field for pathway_map
+      if("PATHWAY_MAP" %in% names(entry[[1]]) && !is.null(entry[[1]][["PATHWAY_MAP"]]) && length(entry[[1]][["PATHWAY_MAP"]]) > 0) {
+        # Extract pathway map IDs (names of the PATHWAY_MAP vector)
+        pathway_maps <- names(entry[[1]][["PATHWAY_MAP"]])
+        filtered_df$pathway_map[i] <- paste(pathway_maps, collapse = "; ")
+      } else if("PATHWAY" %in% names(entry[[1]]) && !is.null(entry[[1]][["PATHWAY"]]) && length(entry[[1]][["PATHWAY"]]) > 0) {
+        # Fallback to PATHWAY field if PATHWAY_MAP is not available
         pathway_maps <- names(entry[[1]][["PATHWAY"]])
         filtered_df$pathway_map[i] <- paste(pathway_maps, collapse = "; ")
       } else {
@@ -476,15 +337,69 @@ process_kegg_annotations <- function(df, organism = NULL) {
   
   # Only throw an error when all KO IDs fail
   if (success_count == 0) {
+    error_msg <- paste0(
+      "\n================================================================================\n",
+      "FAILED TO RETRIEVE KEGG ANNOTATIONS\n",
+      "================================================================================\n\n",
+      "Statistics:\n",
+      "  Total features queried:  ", total_features, "\n",
+      "  Successful queries:      ", success_count, "\n",
+      "  Not found (HTTP 404):    ", not_found_count, "\n",
+      "  Failed with errors:      ", error_count, "\n\n"
+    )
+
     if (not_found_count > 0 && error_count == 0) {
-      stop("All KO IDs were not found in the KEGG database (HTTP 404). ",
-           "This could be due to invalid KO IDs or KEGG database changes.")
+      ko_list <- if (length(not_found_ids) <= 10) {
+        paste("  ", paste(not_found_ids, collapse = ", "))
+      } else {
+        paste("  ", paste(not_found_ids[1:10], collapse = ", "), "...")
+      }
+
+      error_msg <- paste0(error_msg,
+        "Problem: All KO IDs were not found in KEGG database (HTTP 404).\n\n",
+        "Possible causes:\n",
+        "  1. Invalid KO IDs in your data\n",
+        "  2. KEGG database structure has changed\n",
+        "  3. KO IDs are outdated or deprecated\n\n",
+        "KO IDs not found:\n", ko_list, "\n\n",
+        "Recommendations:\n",
+        "  1. Verify your KO IDs are valid (check KEGG database)\n",
+        "  2. Use ko_to_kegg = FALSE for local annotation (no KEGG API needed)\n",
+        "  3. Update your PICRUSt2 reference database\n\n"
+      )
     } else if (error_count > 0) {
-      stop("Failed to retrieve any KEGG annotations due to errors. ",
-           "This could be due to network issues or KEGG API changes.")
+      ko_list <- if (length(error_ids) <= 10) {
+        paste("  ", paste(error_ids, collapse = ", "))
+      } else {
+        paste("  ", paste(error_ids[1:10], collapse = ", "), "...")
+      }
+
+      error_msg <- paste0(error_msg,
+        "Problem: Network or KEGG API errors.\n\n",
+        "Possible causes:\n",
+        "  1. No internet connection or firewall blocking KEGG\n",
+        "  2. KEGG API is down or rate-limiting your requests\n",
+        "  3. Network instability (especially common in China)\n\n",
+        "KO IDs with errors:\n", ko_list, "\n\n",
+        "Recommendations:\n",
+        "  1. Check your internet connection\n",
+        "  2. Try again later (KEGG API may be temporarily down)\n",
+        "  3. Use VPN if in China or behind restrictive firewall\n",
+        "  4. Use ko_to_kegg = FALSE for local annotation (recommended)\n\n"
+      )
     } else {
-      stop("Failed to retrieve any KEGG annotations for unknown reasons.")
+      error_msg <- paste0(error_msg,
+        "Problem: Unknown error occurred.\n\n",
+        "Recommendations:\n",
+        "  1. Check sessionInfo() for package versions\n",
+        "  2. Report this issue on GitHub with reproducible example\n",
+        "  3. Use ko_to_kegg = FALSE as temporary workaround\n\n"
+      )
     }
+
+    error_msg <- paste0(error_msg, "================================================================================\n")
+
+    stop(error_msg, call. = FALSE)
   }
   
   # Check if any annotations were found
@@ -505,8 +420,9 @@ process_kegg_annotations <- function(df, organism = NULL) {
 annotate_pathways <- function(data, pathway_type, ref_data) {
   message("Starting pathway annotation...")
   
-  # Check if data is from DAA results
-  is_daa_results <- all(c("feature", "p_values") %in% colnames(data))
+  # Check if data is from DAA results (check for feature column with any p-value column)
+  is_daa_results <- "feature" %in% colnames(data) &&
+    any(c("p_values", "p_adjust", "pvalue", "p.adjust") %in% colnames(data))
   
   # Extract features
   if (is_daa_results) {
@@ -565,29 +481,50 @@ annotate_pathways <- function(data, pathway_type, ref_data) {
 #' 1. Annotating pathway information from PICRUSt2 output files.
 #' 2. Annotating pathway information from the output of `pathway_daa` function, and converting KO abundance to KEGG pathway abundance when `ko_to_kegg` is set to TRUE.
 #'
+#' **Important**: When `ko_to_kegg = TRUE`, this function automatically filters pathways by
+#' `p_adjust < p_adjust_threshold`. If no pathways meet this criterion, the function returns
+#' the original data with NA annotation columns and issues a detailed warning message with
+#' diagnostic information and recommendations.
+#'
 #' @param file A character string, the path to the PICRUSt2 output file.
 #' @param pathway A character string, the type of pathway to annotate. Options are "KO", "EC", or "MetaCyc".
-#' @param daa_results_df A data frame, the output from `pathway_daa` function.
-#' @param ko_to_kegg A logical, decide if convert KO abundance to KEGG pathway abundance. Default is FALSE. Set to TRUE when using the function for the second use case.
-#' @param organism A character string specifying the KEGG organism code (e.g., 'hsa' for human, 'eco' for E. coli). Default is NULL, which retrieves generic KO information not specific to any organism. Only used when ko_to_kegg is TRUE.
+#' @param daa_results_df A data frame, the output from `pathway_daa` function. When `ko_to_kegg = TRUE`,
+#'   must contain columns: feature, p_values, p_adjust, and method.
+#' @param ko_to_kegg A logical, decide if convert KO abundance to KEGG pathway abundance. Default is FALSE.
+#'   Set to TRUE when using the function for the second use case. When TRUE, queries KEGG database for
+#'   pathway annotations (requires internet connection) and filters for significant pathways.
+#' @param organism A character string specifying the KEGG organism code (e.g., 'hsa' for human, 'eco' for E. coli).
+#'   Default is NULL, which retrieves generic KO information not specific to any organism. Only used when ko_to_kegg is TRUE.
+#' @param p_adjust_threshold A numeric value specifying the significance threshold for filtering
+#'   pathways when `ko_to_kegg = TRUE`. Only pathways with `p_adjust < p_adjust_threshold` will be
+#'   annotated via KEGG API. Default is 0.05. Ignored when `ko_to_kegg = FALSE`.
 #'
-#' @return A data frame with annotated pathway information. 
-#' If using the function for the first use case, the output data frame will include the following columns:
+#' @return A data frame with annotated pathway information.
+#'
+#' If using the function for the first use case (file input), the output data frame will include:
 #' \itemize{
 #'   \item \code{id}: The pathway ID.
 #'   \item \code{description}: The description of the pathway.
 #'   \item \code{sample1, sample2, ...}: Abundance values for each sample.
 #' }
-#' 
-#' If \code{ko_to_kegg} is set to TRUE, the output data frame will also include the following columns:
+#'
+#' If \code{ko_to_kegg} is set to TRUE, the output data frame will also include:
 #' \itemize{
 #'   \item \code{pathway_name}: The name of the KEGG pathway.
 #'   \item \code{pathway_description}: The description of the KEGG pathway.
 #'   \item \code{pathway_class}: The class of the KEGG pathway.
 #'   \item \code{pathway_map}: The KEGG pathway map ID.
 #' }
-#' 
-#' When \code{ko_to_kegg} is TRUE, the function queries the KEGG database for pathway information. By default (organism = NULL), it retrieves generic KO information that is not specific to any organism. If you are interested in organism-specific pathway information, you can specify the KEGG organism code using the \code{organism} parameter.
+#'
+#' **Note**: When \code{ko_to_kegg = TRUE}, only pathways with
+#' \code{p_adjust < p_adjust_threshold} are processed. If no pathways meet this criterion,
+#' all annotation columns will be NA, and a detailed warning message will be issued with
+#' diagnostic information.
+#'
+#' When \code{ko_to_kegg} is TRUE, the function queries the KEGG database for pathway information.
+#' By default (organism = NULL), it retrieves generic KO information that is not specific to any organism.
+#' If you are interested in organism-specific pathway information, you can specify the KEGG organism code
+#' using the \code{organism} parameter.
 #'
 #' @examples
 #' \dontrun{
@@ -609,7 +546,8 @@ pathway_annotation <- function(file = NULL,
                              pathway = NULL,
                              daa_results_df = NULL,
                              ko_to_kegg = FALSE,
-                             organism = NULL) {
+                             organism = NULL,
+                             p_adjust_threshold = 0.05) {
   
   # Input validation
   if (is.null(file) && is.null(daa_results_df)) {
@@ -623,6 +561,7 @@ pathway_annotation <- function(file = NULL,
   # Process file input
   if (!is.null(file)) {
     abundance <- read_abundance_file(file)
+    abundance <- tibble::add_column(abundance, description = NA, .after = 1)
     ref_data <- load_reference_data(pathway)
     return(annotate_pathways(abundance, pathway, ref_data))
   }
@@ -639,9 +578,8 @@ pathway_annotation <- function(file = NULL,
       } else {
         message("No organism specified. Using generic KO information across all species.")
       }
-      message("We are connecting to the KEGG database to get the latest results, please wait patiently.")
-      message("Processing pathways in chunks...")
-      return(process_kegg_annotations(daa_results_df, organism))
+      message("Connecting to KEGG database...")
+      return(process_kegg_annotations(daa_results_df, organism, p_adjust_threshold))
     }
   }
 }

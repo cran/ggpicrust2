@@ -12,13 +12,15 @@ ggpicrust2(
   pathway,
   daa_method = "ALDEx2",
   ko_to_kegg = FALSE,
+  filter_for_prokaryotes = TRUE,
   p.adjust = "BH",
   order = "group",
   p_values_bar = TRUE,
   x_lab = NULL,
   select = NULL,
   reference = NULL,
-  colors = NULL
+  colors = NULL,
+  p_values_threshold = 0.05
 )
 }
 \arguments{
@@ -43,6 +45,10 @@ ggpicrust2(
 
 \item{ko_to_kegg}{A character to control the conversion of KO abundance to KEGG abundance}
 
+\item{filter_for_prokaryotes}{Logical. If TRUE (default), filters out KEGG pathways
+that are specific to eukaryotes (e.g., human diseases, organismal systems) when
+ko_to_kegg = TRUE. Set to FALSE to include all KEGG pathways.}
+
 \item{p.adjust}{a character specifying the method for p-value adjustment, default is "BH", choices are:
 - "BH": Benjamini-Hochberg correction
 - "holm": Holm's correction
@@ -62,11 +68,27 @@ ggpicrust2(
 \item{reference}{A character, a reference group level for several DA methods}
 
 \item{colors}{A vector consisting of colors number}
+
+\item{p_values_threshold}{A numeric value specifying the threshold for statistical
+significance of differential abundance. Pathways with adjusted p-values below this
+threshold will be displayed in the plot. Default is 0.05.}
 }
 \value{
-daa.results.df, a dataframe of DA results
-A list of sub-lists, each containing a ggplot2 plot (`plot`) and a dataframe of differential abundance results (`results`) for a specific DA method.
-Each plot visualizes the differential abundance results of a specific DA method, and the corresponding dataframe contains the results used to create the plot.
+A list containing:
+\itemize{
+  \item Numbered elements (1, 2, ...): Sub-lists for each DA method, each containing:
+    \itemize{
+      \item \code{plot}: A ggplot2 error bar plot visualizing the differential abundance results
+      \item \code{results}: A data frame of differential abundance results for that method
+    }
+  \item \code{abundance}: The processed abundance data (KEGG pathway or original) for downstream analysis
+  \item \code{metadata}: The metadata data frame
+  \item \code{group}: The group variable name used in the analysis
+  \item \code{daa_results_df}: The complete annotated DAA results data frame
+  \item \code{ko_to_kegg}: Logical indicating whether KO to KEGG conversion was performed
+}
+These additional fields allow seamless integration with \code{\link{pathway_pca}} and
+\code{\link{pathway_heatmap}} for further visualization without re-preparing data.
 }
 \description{
 This function integrates pathway name/description annotations, ten of the most advanced differential abundance (DA) methods, and visualization of DA results.
@@ -129,5 +151,24 @@ results_file_input <- ggpicrust2(data = metacyc_abundance,
                                  order = "group",
                                  p_values_bar = TRUE,
                                  x_lab = "description")
+
+# Use the returned data for PCA analysis (no need to re-prepare data)
+pca_plot <- pathway_pca(
+  abundance = results_file_input$abundance,
+  metadata = results_file_input$metadata,
+  group = results_file_input$group
+)
+
+# Use the returned data for heatmap (filter significant pathways first)
+sig_features <- results_file_input$daa_results_df \%>\%
+  dplyr::filter(p_adjust < 0.05) \%>\%
+  dplyr::pull(feature)
+if (length(sig_features) > 0) {
+  heatmap_plot <- pathway_heatmap(
+    abundance = results_file_input$abundance[sig_features, , drop = FALSE],
+    metadata = results_file_input$metadata,
+    group = results_file_input$group
+  )
+}
 }
 }

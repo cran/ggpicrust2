@@ -7,7 +7,6 @@
 #' faceting for multiple grouping variables and is created using the `ggplot2` library.
 #'
 #' @name pathway_heatmap
-#' @importFrom stats cor as.dist dist hclust setNames
 #' @param abundance A matrix or data frame of pathway abundance data, where columns
 #'   correspond to samples and rows correspond to pathways. Must contain at least
 #'   two samples.
@@ -49,6 +48,7 @@
 #' @import ggplot2
 #' @import tidyr
 #' @importFrom ggh4x facet_nested strip_nested elem_list_rect
+#' @importFrom stats cor as.dist dist hclust
 #'
 #' @examples
 #' \donttest{
@@ -162,6 +162,8 @@
 #'     ) %>%
 #'     filter(pathway %in% feature_with_p_0.05$feature) %>%
 #'     select(-"pathway") %>%
+#'     filter(!is.na(description)) %>%
+#'     distinct(description, .keep_all = TRUE) %>%
 #'     column_to_rownames("description"),
 #'   metadata = metadata,
 #'   group = "Environment",
@@ -209,6 +211,8 @@
 #'     ) %>%
 #'     filter(pathway %in% feature_with_p_0.05$feature) %>%
 #'     select(-"pathway") %>%
+#'     filter(!is.na(description)) %>%
+#'     distinct(description, .keep_all = TRUE) %>%
 #'     column_to_rownames("description"),
 #'   metadata = metadata,
 #'   group = "Environment",              # Primary: Pro-survival vs others
@@ -233,9 +237,10 @@ generate_nested_colors <- function(metadata, all_groups, colors = NULL) {
     # Single-level grouping: one color per group level
     n_colors_needed <- length(unique(metadata[[all_groups[1]]]))
   } else {
-    # Multi-level grouping: colors for top-level groups
-    # We'll use colors for the first (primary) grouping variable
-    n_colors_needed <- length(unique(metadata[[all_groups[1]]]))
+    # Multi-level grouping: each grouping level needs distinct colors
+    # Sum up unique levels across all grouping variables
+    # e.g., Diet(2) + Time(4) = 6 colors needed for all facet strips
+    n_colors_needed <- sum(sapply(all_groups, function(g) length(unique(metadata[[g]]))))
   }
 
   # Default color palette
@@ -323,84 +328,30 @@ pathway_heatmap <- function(abundance,
                             colorbar_width = 0.6,
                             colorbar_height = 9,
                             colorbar_breaks = NULL) {
-  # Input validation
-  if (!is.matrix(abundance) && !is.data.frame(abundance)) {
-    stop("abundance must be a data frame or matrix")
-  }
-  
-  # Ensure abundance is a matrix
+  # Input validation using unified functions
+  validate_abundance(abundance, min_samples = 2)
+  validate_metadata(metadata)
+
+  # Ensure abundance is a matrix with names
   abundance <- as.matrix(abundance)
-  
-  # Check sample count
-  if (ncol(abundance) < 2) {
-    stop("At least two samples are required for creating a heatmap")
-  }
-  
-  # Check pathway count
-  if (nrow(abundance) < 1) {
-    stop("At least one pathway is required")
-  }
-  
-  # Ensure column names exist
-  if (is.null(colnames(abundance))) {
-    colnames(abundance) <- paste0("Sample", seq_len(ncol(abundance)))
-  }
-  
-  # Ensure row names exist
-  if (is.null(rownames(abundance))) {
-    rownames(abundance) <- paste0("Pathway", seq_len(nrow(abundance)))
-  }
-  
-  if (!is.data.frame(metadata)) {
-    stop("metadata must be a data frame")
-  }
-  
-  if (!is.character(group) || length(group) != 1) {
-    stop("group must be a single character string")
+  if (nrow(abundance) < 1) stop("At least one pathway is required")
+  if (is.null(colnames(abundance))) colnames(abundance) <- paste0("Sample", seq_len(ncol(abundance)))
+  if (is.null(rownames(abundance))) rownames(abundance) <- paste0("Pathway", seq_len(nrow(abundance)))
+
+  # Handle deprecated facet_by parameter
+ if (!is.null(facet_by)) {
+    warning("'facet_by' is deprecated. Use 'secondary_groups' instead.", call. = FALSE)
+    if (is.null(secondary_groups)) secondary_groups <- facet_by
   }
 
-  # Validate secondary_groups parameter
-  if (!is.null(secondary_groups)) {
-    if (!is.character(secondary_groups)) {
-      stop("secondary_groups must be NULL or a character vector")
-    }
-    if (length(secondary_groups) == 0) {
-      stop("secondary_groups must contain at least one variable name if not NULL")
-    }
-  }
-
-  # Handle deprecated facet_by parameter with backward compatibility
-  if (!is.null(facet_by)) {
-    warning("Parameter 'facet_by' is deprecated and will be removed in future versions. Use 'secondary_groups' instead.",
-            call. = FALSE)
-    if (is.null(secondary_groups)) {
-      secondary_groups <- facet_by
-    } else {
-      warning("Both 'facet_by' and 'secondary_groups' are specified. Using 'secondary_groups' and ignoring 'facet_by'.",
-              call. = FALSE)
-    }
-  }
-
-  # Build complete grouping variables list
+  # Build and validate all grouping variables
   all_groups <- c(group, secondary_groups)
-
-  # Validate all grouping variables exist in metadata
-  missing_groups <- setdiff(all_groups, colnames(metadata))
-  if (length(missing_groups) > 0) {
-    stop("The following grouping variables are not found in metadata: ",
-         paste(missing_groups, collapse = ", "))
+  for (grp in all_groups) {
+    validate_group(metadata, grp, min_groups = 2)
   }
 
   if (!is.null(colors) && !is.character(colors)) {
-    stop("colors must be NULL or a character vector of color codes")
-  }
-  
-  # Check group count for all grouping variables
-  for (grp in all_groups) {
-    group_levels <- unique(metadata[[grp]])
-    if (length(group_levels) < 2) {
-      stop(paste("At least two groups are required for comparison in variable:", grp))
-    }
+    stop("colors must be NULL or a character vector")
   }
   
   # Heatmaps use color changes to visualize changes in values. However, if the
@@ -418,18 +369,14 @@ pathway_heatmap <- function(abundance,
   # deviation of 1. At this point, the plotted heat map gives a good indication
   # of the variation in expression of all genes across samples.
 
-  # Check that 'group' is a column in 'metadata'
-  if (!group %in% colnames(metadata)) {
-    stop(paste("group:", group, "must be a column in metadata"))
-  }
+  # Align samples using unified function
+  aligned <- align_samples(abundance, metadata)
+  abundance <- as.matrix(aligned$abundance)
+  metadata <- aligned$metadata
+  metadata$sample_name <- colnames(abundance)
 
-  # Find the column in metadata that matches the column names of abundance
-  sample_name_col <- colnames(metadata)[sapply(colnames(metadata), function(x) all(colnames(abundance) %in% metadata[[x]]))]
-  metadata$sample_name <- metadata %>% select(all_of(c(sample_name_col))) %>% pull()
-
-  if (!all(colnames(abundance) %in% metadata$sample_name)) {
-    stop("Samples in abundance and metadata must match")
-  }
+  # Validate group column
+  validate_group(metadata, group, min_groups = 2)
 
   # Perform z-score normalization
   z_abundance <- t(apply(abundance, 1, scale))
@@ -518,7 +465,13 @@ pathway_heatmap <- function(abundance,
   p <- ggplot2::ggplot(data = long_df,
                     mapping = ggplot2::aes(x = Sample, y = rowname, fill = Value)) +
     ggplot2::geom_tile() +
-    ggplot2::scale_fill_gradient2(low = low_color, mid = mid_color, high = high_color, midpoint = 0) +
+    ggplot2::scale_fill_gradient2(
+      low = low_color,
+      mid = mid_color,
+      high = high_color,
+      midpoint = 0,
+      breaks = colorbar_breaks
+    ) +
     ggplot2::labs(x = NULL, y = NULL) +
     ggplot2::scale_y_discrete(expand = c(0, 0), position = "left") +
     ggplot2::scale_x_discrete(expand = c(0, 0)) +
@@ -550,8 +503,7 @@ pathway_heatmap <- function(abundance,
         title.position = if(colorbar_position %in% c("left", "right")) "top" else "left",
         title.hjust = if(colorbar_position %in% c("left", "right")) 0.5 else 0,
         ticks = TRUE,
-        label = TRUE,
-        breaks = colorbar_breaks
+        label = TRUE
       )
     ) + 
     ggplot2::theme(legend.position = colorbar_position)
@@ -601,7 +553,7 @@ pathway_heatmap <- function(abundance,
     }
     
     # Create row dendrogram if rows were clustered
-    if (cluster_rows && exists("row_hclust")) {
+    if (cluster_rows) {
       row_dendro <- create_dendrogram(row_hclust, dendro_line_size, dendro_labels, horizontal = TRUE)
       if (!is.null(row_dendro)) {
         p <- row_dendro + p + patchwork::plot_layout(widths = c(0.2, 1))
@@ -609,7 +561,7 @@ pathway_heatmap <- function(abundance,
     }
     
     # Create column dendrogram if columns were clustered
-    if (cluster_cols && exists("col_hclust")) {
+    if (cluster_cols) {
       col_dendro <- create_dendrogram(col_hclust, dendro_line_size, dendro_labels, horizontal = FALSE)
       if (!is.null(col_dendro)) {
         p <- col_dendro / p + patchwork::plot_layout(heights = c(0.2, 1))
@@ -619,21 +571,20 @@ pathway_heatmap <- function(abundance,
 
   # Print the ordered sample names and group levels
   if (!cluster_cols) {
-    cat("The Sample Names in order from left to right are:\n")
-    cat(ordered_sample_names, sep = ", ")
-    cat("\n")
-
-    cat("The Group Levels in order from left to right are:\n")
-    cat(ordered_group_levels, sep = ", ")
-    cat("\n")
+    message("The Sample Names in order from left to right are:")
+    message(paste(ordered_sample_names, collapse = ", "))
+    message("The Group Levels in order from left to right are:")
+    message(paste(ordered_group_levels, collapse = ", "))
   } else {
-    cat("Samples ordered by hierarchical clustering (", clustering_method, " method, ", clustering_distance, " distance)\n")
-    cat("Column order: ", paste(col_order, collapse = ", "), "\n")
+    message("Samples ordered by hierarchical clustering (",
+            clustering_method, " method, ", clustering_distance, " distance)")
+    message("Column order: ", paste(col_order, collapse = ", "))
   }
-  
+
   if (cluster_rows) {
-    cat("Pathways ordered by hierarchical clustering (", clustering_method, " method, ", clustering_distance, " distance)\n")
-    cat("Row order: ", paste(row_order, collapse = ", "), "\n")
+    message("Pathways ordered by hierarchical clustering (",
+            clustering_method, " method, ", clustering_distance, " distance)")
+    message("Row order: ", paste(row_order, collapse = ", "))
   }
 
   return(p)

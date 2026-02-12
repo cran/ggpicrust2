@@ -16,7 +16,7 @@ compare_gsea_daa(
 
 \item{daa_results}{A data frame containing DAA results from the pathway_daa function}
 
-\item{plot_type}{A character string specifying the visualization type: "venn", "upset", "scatter", or "heatmap"}
+\item{plot_type}{A character string specifying the visualization type: "venn", "upset", or "scatter"}
 
 \item{p_threshold}{A numeric value specifying the significance threshold}
 }
@@ -38,13 +38,13 @@ abundance_data <- as.data.frame(ko_abundance)
 rownames(abundance_data) <- abundance_data[, "#NAME"]
 abundance_data <- abundance_data[, -1]
 
-# Run GSEA analysis
+# Run GSEA analysis (using camera method - recommended)
 gsea_results <- pathway_gsea(
   abundance = abundance_data,
   metadata = metadata,
   group = "Environment",
   pathway_type = "KEGG",
-  method = "fgsea"
+  method = "camera"
 )
 
 # Run DAA analysis

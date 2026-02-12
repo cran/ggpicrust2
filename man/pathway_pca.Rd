@@ -4,7 +4,7 @@
 \alias{pathway_pca}
 \title{Perform Principal Component Analysis (PCA) on functional pathway abundance data}
 \usage{
-pathway_pca(abundance, metadata, group, colors = NULL)
+pathway_pca(abundance, metadata, group, colors = NULL, show_marginal = TRUE)
 }
 \arguments{
 \item{abundance}{A numeric matrix or data frame containing pathway abundance data.
@@ -13,11 +13,9 @@ Column names must match the sample names in metadata.
 Values must be numeric and cannot contain missing values (NA).}
 
 \item{metadata}{A data frame containing sample information.
-Must include:
-\itemize{
-  \item A column named "sample_name" matching the column names in abundance
-  \item A column for grouping samples (specified by the 'group' parameter)
-}}
+Must include a column for grouping samples (specified by the 'group' parameter).
+Sample identifiers are auto-detected from columns named sample_name, Sample_ID,
+SampleID, etc., or from rownames.}
 
 \item{group}{A character string specifying the column name in metadata that contains
 group information for samples (e.g., "treatment", "condition", "group").}
@@ -25,6 +23,9 @@ group information for samples (e.g., "treatment", "condition", "group").}
 \item{colors}{Optional. A character vector of colors for different groups.
 Length must match the number of unique groups.
 If NULL, default colors will be used.}
+
+\item{show_marginal}{Logical. Whether to show marginal density plots for PC1 and PC2.
+Default is TRUE. Set to FALSE to show only the PCA scatter plot.}
 }
 \value{
 A ggplot object showing:
@@ -41,14 +42,9 @@ for both PCs. The plot helps to visualize the clustering patterns and distributi
 across different groups.
 }
 \details{
-The function performs several validations on input data:
-\itemize{
-  \item Abundance matrix must have at least 2 pathways and 3 samples
-  \item All values in abundance matrix must be numeric
-  \item Sample names must match between abundance and metadata
-  \item Group column must exist in metadata
-  \item If custom colors are provided, they must be valid color names or codes
-}
+The function automatically aligns samples between abundance data and metadata,
+supporting various sample identifier formats. Samples and pathways with zero
+variance are filtered before PCA.
 }
 \examples{
 # Create example abundance data
@@ -71,6 +67,14 @@ pca_plot <- pathway_pca(
   metadata,
   "group",
   colors = c("blue", "red")  # One color per group
+)
+
+# PCA plot without marginal density plots
+pca_plot <- pathway_pca(
+  abundance_data,
+  metadata,
+  "group",
+  show_marginal = FALSE
 )
 
 \donttest{

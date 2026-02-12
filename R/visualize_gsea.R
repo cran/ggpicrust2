@@ -17,6 +17,13 @@
 #' @param pathway_label_column A character string specifying which column to use for pathway labels.
 #'   If NULL (default), the function will automatically use 'pathway_name' if available, otherwise 'pathway_id'.
 #'   This allows for custom labeling when using annotated GSEA results.
+#' @param scale Optional palette/scale for customizing colors. Accepts: (1) a character vector of colors,
+#'   (2) a function that returns colors given an integer (e.g., viridisLite::viridis), or
+#'   (3) a ggplot2 scale object (e.g., ggplot2::scale_fill_gradientn(...)).
+#'   When NULL, defaults keep current behavior. Applies to: enrichment_plot (fill, continuous),
+#'   dotplot (color, continuous), barplot (fill, discrete Positive/Negative), network (color, diverging around 0),
+#'   heatmap (main heatmap col; row annotation stays default unless overridden in heatmap_params).
+
 #'
 #' @return A ggplot2 object or ComplexHeatmap object
 #' @export
@@ -32,13 +39,13 @@
 #' rownames(abundance_data) <- abundance_data[, "#NAME"]
 #' abundance_data <- abundance_data[, -1]
 #'
-#' # Run GSEA analysis
+#' # Run GSEA analysis (using camera method - recommended)
 #' gsea_results <- pathway_gsea(
 #'   abundance = abundance_data,
 #'   metadata = metadata,
 #'   group = "Environment",
 #'   pathway_type = "KEGG",
-#'   method = "fgsea"
+#'   method = "camera"
 #' )
 #'
 #' # Create enrichment plot with pathway IDs (default)
@@ -81,34 +88,24 @@ visualize_gsea <- function(gsea_results,
                           group = NULL,
                           network_params = list(),
                           heatmap_params = list(),
-                          pathway_label_column = NULL) {
+                          pathway_label_column = NULL,
+                          scale = NULL) {
 
-  # Input validation
-  if (!is.data.frame(gsea_results)) {
-    stop("'gsea_results' must be a data frame")
-  }
-
-  if (!plot_type %in% c("enrichment_plot", "dotplot", "barplot", "network", "heatmap")) {
-    stop("plot_type must be one of 'enrichment_plot', 'dotplot', 'barplot', 'network', or 'heatmap'")
-  }
-
-  if (!sort_by %in% c("NES", "pvalue", "p.adjust")) {
-    stop("sort_by must be one of 'NES', 'pvalue', or 'p.adjust'")
-  }
+  # Input validation using unified functions
+  validate_dataframe(gsea_results, param_name = "gsea_results")
+  validate_choice(plot_type, c("enrichment_plot", "dotplot", "barplot", "network", "heatmap"), "plot_type")
+  validate_choice(sort_by, c("NES", "pvalue", "p.adjust"), "sort_by")
 
   if (!is.null(colors) && !is.character(colors)) {
     stop("colors must be NULL or a character vector")
   }
-
   if (!is.null(pathway_label_column) && !is.character(pathway_label_column)) {
     stop("pathway_label_column must be NULL or a character string")
   }
-
-  # Validate n_pathways parameter
   if (!is.numeric(n_pathways) || length(n_pathways) != 1 || is.na(n_pathways)) {
     stop("n_pathways must be a single numeric value")
   }
-  
+
   # Convert to integer if it's not already
   n_pathways <- as.integer(n_pathways)
 
@@ -144,9 +141,7 @@ visualize_gsea <- function(gsea_results,
   # Determine which column to use for pathway labels
   if (!is.null(pathway_label_column)) {
     # User specified a custom column
-    if (!pathway_label_column %in% colnames(gsea_results)) {
-      stop(paste("Specified pathway_label_column '", pathway_label_column, "' not found in gsea_results", sep = ""))
-    }
+    require_column(gsea_results, pathway_label_column, "gsea_results")
     pathway_label_col <- pathway_label_column
   } else {
     # Auto-detect: prefer pathway_name if available, otherwise use pathway_id
@@ -179,20 +174,15 @@ visualize_gsea <- function(gsea_results,
   if (n_pathways <= 0) {
     return(create_empty_plot(plot_type))
   }
-  
+
   # Check if we have any results after filtering
   if (nrow(gsea_results) == 0) {
     return(create_empty_plot(plot_type))
   }
-  
+
   # Limit to top n_pathways
   if (nrow(gsea_results) > n_pathways) {
-    gsea_results <- gsea_results[1:n_pathways, ]
-  }
-  
-  # Double-check after limiting (should not happen, but be safe)
-  if (nrow(gsea_results) == 0) {
-    return(create_empty_plot(plot_type))
+    gsea_results <- head(gsea_results, n_pathways)
   }
 
   # Create visualization based on plot_type
@@ -216,7 +206,11 @@ visualize_gsea <- function(gsea_results,
     p <- ggplot2::ggplot(gsea_results, ggplot2::aes(x = reorder(.data$pathway_label, .data$NES), y = .data$NES, fill = .data$p.adjust)) +
       ggplot2::geom_bar(stat = "identity") +
       ggplot2::coord_flip() +
-      ggplot2::scale_fill_gradient(low = "red", high = "blue") +
+      # apply user-provided scale if available (fallback to default)
+      {
+        sc <- .build_continuous_scale(aes = "fill", scale = scale, diverging = FALSE, name = "Adjusted p-value")
+        if (is.null(sc)) ggplot2::scale_fill_gradient(low = "red", high = "blue") else sc
+      } +
       ggplot2::labs(
         title = "GSEA Enrichment Results",
         x = "Pathway",
@@ -238,7 +232,11 @@ visualize_gsea <- function(gsea_results,
     p <- ggplot2::ggplot(gsea_results,
                        ggplot2::aes(x = .data$NES, y = .data$pathway_label, color = .data$p.adjust, size = .data$size)) +
       ggplot2::geom_point() +
-      ggplot2::scale_color_gradient(low = "red", high = "blue") +
+      # apply user-provided scale if available (fallback to default)
+      {
+        sc <- .build_continuous_scale(aes = "color", scale = scale, diverging = FALSE, name = "Adjusted p-value")
+        if (is.null(sc)) ggplot2::scale_color_gradient(low = "red", high = "blue") else sc
+      } +
       ggplot2::labs(
         title = "GSEA Results",
         x = "Normalized Enrichment Score (NES)",
@@ -264,7 +262,10 @@ visualize_gsea <- function(gsea_results,
     p <- ggplot2::ggplot(gsea_results,
                        ggplot2::aes(x = .data$pathway_label, y = .data$NES, fill = .data$direction)) +
       ggplot2::geom_bar(stat = "identity") +
-      ggplot2::scale_fill_manual(values = c("Positive" = "#E41A1C", "Negative" = "#377EB8")) +
+      {
+        sc <- .build_discrete_fill_for_direction(scale = scale)
+        if (is.null(sc)) ggplot2::scale_fill_manual(values = c("Positive" = "#E41A1C", "Negative" = "#377EB8")) else sc
+      } +
       ggplot2::coord_flip() +
       ggplot2::labs(
         title = "GSEA Results",
@@ -299,7 +300,8 @@ visualize_gsea <- function(gsea_results,
       similarity_cutoff = network_params$similarity_cutoff,
       layout = network_params$layout,
       node_color_by = network_params$node_color_by,
-      edge_width_by = network_params$edge_width_by
+      edge_width_by = network_params$edge_width_by,
+      scale = scale
     )
 
   } else if (plot_type == "heatmap") {
@@ -324,7 +326,11 @@ visualize_gsea <- function(gsea_results,
       cluster_rows = heatmap_params$cluster_rows,
       cluster_columns = heatmap_params$cluster_columns,
       show_rownames = heatmap_params$show_rownames,
-      annotation_colors = heatmap_params$annotation_colors
+      annotation_colors = heatmap_params$annotation_colors,
+      col_fun = {
+        # Prefer explicit col_fun if provided in heatmap_params; else build from `scale`
+        if (!is.null(heatmap_params$col_fun)) heatmap_params$col_fun else .build_heatmap_col_fun(scale)
+      }
     )
   }
 
@@ -342,16 +348,105 @@ create_empty_plot <- function(plot_type) {
   base_plot <- ggplot2::ggplot() +
     ggplot2::theme_void() +
     ggplot2::labs(title = paste("No pathways to display for", plot_type))
-  
+
   if (plot_type %in% c("network", "heatmap")) {
     # Special handling for complex plot types
-    base_plot + ggplot2::annotate("text", x = 0, y = 0, 
+    base_plot + ggplot2::annotate("text", x = 0, y = 0,
                                   label = "No significant pathways found",
                                   size = 4, color = "gray50")
   } else {
-    base_plot + ggplot2::annotate("text", x = 0, y = 0, 
+    base_plot + ggplot2::annotate("text", x = 0, y = 0,
                                   label = "No pathways to display",
                                   size = 4, color = "gray50")
+  }
+}
+
+#' Internal: detect if an object is a ggplot2 Scale
+#' @keywords internal
+.is_ggplot_scale <- function(x) {
+  inherits(x, "Scale")
+}
+
+#' Internal: coerce user 'scale' input to a vector of colors (or NULL)
+#' Accepts character vector or function(n)->colors. Returns character vector or NULL.
+#' @keywords internal
+.as_color_vector <- function(scale) {
+  if (is.null(scale)) return(NULL)
+  if (is.character(scale)) return(scale)
+  if (is.function(scale)) {
+    # Try to get 100 colors as a reasonable default resolution
+    cols <- tryCatch(scale(100), error = function(e) NULL)
+    if (is.character(cols) && length(cols) > 1) return(cols)
+    return(NULL)
+  }
+  NULL
+}
+
+#' Internal: build a continuous ggplot2 scale layer from colors or ggplot2 scale
+#' @keywords internal
+.build_continuous_scale <- function(aes = c("fill", "color"), scale = NULL,
+                                   diverging = FALSE, midpoint = NULL, name = NULL) {
+  aes <- match.arg(aes)
+  # If a ggplot2 scale object is provided, return as is
+  if (.is_ggplot_scale(scale)) return(scale)
+  cols <- .as_color_vector(scale)
+  if (is.null(cols)) return(NULL)
+  if (diverging && length(cols) >= 3) {
+    low <- cols[1]
+    mid <- cols[ceiling(length(cols) / 2)]
+    high <- cols[length(cols)]
+    if (aes == "fill") {
+      return(ggplot2::scale_fill_gradient2(low = low, mid = mid, high = high,
+                                           midpoint = if (is.null(midpoint)) 0 else midpoint,
+                                           name = name))
+    } else {
+      return(ggplot2::scale_color_gradient2(low = low, mid = mid, high = high,
+                                            midpoint = if (is.null(midpoint)) 0 else midpoint,
+                                            name = name))
+    }
+  } else {
+    # General gradientn for sequential palettes
+    if (aes == "fill") {
+      return(ggplot2::scale_fill_gradientn(colors = cols, name = name))
+    } else {
+      return(ggplot2::scale_color_gradientn(colors = cols, name = name))
+    }
+  }
+}
+
+#' Internal: build a discrete fill scale for barplot direction
+#' @keywords internal
+.build_discrete_fill_for_direction <- function(scale = NULL) {
+  # direction levels are c("Positive", "Negative") in code, but mapping uses both
+  cols <- .as_color_vector(scale)
+  if (is.null(cols) || length(cols) < 2) return(NULL)
+  values <- c("Positive" = cols[length(cols)], "Negative" = cols[1])
+  ggplot2::scale_fill_manual(values = values)
+}
+
+#' Internal: build a circlize colorRamp2 function for ComplexHeatmap from user scale
+#' @keywords internal
+.build_heatmap_col_fun <- function(scale = NULL) {
+  # Get color vector from scale parameter (handles NULL, vector, function, ggplot scale)
+  cols <- .as_color_vector(scale)
+
+  # If no colors provided or couldn't convert, return NULL (use defaults)
+  if (is.null(cols)) return(NULL)
+
+  # Create a diverging color function for heatmap
+  # Typical heatmap shows z-scores, so we use -2, 0, 2 as breakpoints
+  if (length(cols) >= 3) {
+    # Use low, mid, high colors from the palette
+    low_col <- cols[1]
+    mid_col <- cols[ceiling(length(cols) / 2)]
+    high_col <- cols[length(cols)]
+    return(circlize::colorRamp2(c(-2, 0, 2), c(low_col, mid_col, high_col)))
+  } else if (length(cols) == 2) {
+    # If only 2 colors, create a gradient without midpoint
+    return(circlize::colorRamp2(c(-2, 2), c(cols[1], cols[2])))
+  } else {
+    # Single color or invalid, return NULL
+    return(NULL)
   }
 }
 
@@ -364,6 +459,7 @@ create_empty_plot <- function(plot_type) {
 #' @param layout A character string specifying the network layout algorithm: "fruchterman", "kamada", or "circle"
 #' @param node_color_by A character string specifying the node color mapping: "NES", "pvalue", or "p.adjust"
 #' @param edge_width_by A character string specifying the edge width mapping: "similarity" or "constant"
+#' @param scale Optional palette/scale for customizing node color mapping (same conventions as visualize_gsea)
 #'
 #' @return A ggplot2 object
 #' @keywords internal
@@ -373,33 +469,9 @@ create_network_plot <- function(gsea_results,
                                n_pathways = 20,
                                layout = "fruchterman",
                                node_color_by = "NES",
-                               edge_width_by = "similarity") {
-
-  # Check required packages
-  if (!requireNamespace("igraph", quietly = TRUE) ||
-      !requireNamespace("ggraph", quietly = TRUE)) {
-    stop("Packages 'igraph' and 'ggraph' are required for network plots. Please install them.")
-  }
-
-  # Handle boundary conditions for n_pathways
-  if (n_pathways <= 0) {
-    return(create_empty_plot("network"))
-  }
-  
-  # Check if we have any results
-  if (nrow(gsea_results) == 0) {
-    return(create_empty_plot("network"))
-  }
-  
-  # Limit number of pathways
-  if (nrow(gsea_results) > n_pathways) {
-    gsea_results <- gsea_results[order(gsea_results$p.adjust), ][1:n_pathways, ]
-  }
-  
-  # Double-check after limiting
-  if (nrow(gsea_results) == 0) {
-    return(create_empty_plot("network"))
-  }
+                               edge_width_by = "similarity",
+                               scale = NULL) {
+  # Note: Input validation (packages, n_pathways, nrow) is done in visualize_gsea()
 
   # Extract leading edge genes
   leading_edges <- strsplit(gsea_results$leading_edge, ";")
@@ -412,8 +484,8 @@ create_network_plot <- function(gsea_results,
   rownames(similarity_matrix) <- pathway_ids
   colnames(similarity_matrix) <- pathway_ids
 
-  for (i in 1:n) {
-    for (j in 1:n) {
+  for (i in seq_len(n)) {
+    for (j in seq_len(n)) {
       if (i != j) {
         set1 <- leading_edges[[i]]
         set2 <- leading_edges[[j]]
@@ -500,10 +572,11 @@ create_network_plot <- function(gsea_results,
     ggraph::geom_node_text(ggplot2::aes(label = .data$pathway_label), repel = TRUE, size = 3) +
     ggraph::scale_edge_width(range = c(0.1, 2)) +
     ggraph::scale_edge_alpha(range = c(0.1, 0.8)) +
-    ggplot2::scale_color_gradient2(
-      low = "blue", mid = "white", high = "red", midpoint = 0,
-      name = node_color_by
-    ) +
+    # apply user-provided diverging scale for node color if available (fallback to default)
+    {
+      sc <- .build_continuous_scale(aes = "color", scale = scale, diverging = TRUE, midpoint = 0, name = node_color_by)
+      if (is.null(sc)) ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0, name = node_color_by) else sc
+    } +
     ggplot2::scale_size(range = c(2, 8), name = "Gene Set Size") +
     ggraph::theme_graph() +
     ggplot2::labs(
@@ -525,6 +598,7 @@ create_network_plot <- function(gsea_results,
 #' @param cluster_columns A logical value indicating whether to cluster columns
 #' @param show_rownames A logical value indicating whether to show row names
 #' @param annotation_colors A list of colors for annotations
+#' @param col_fun A color function (e.g., circlize::colorRamp2) to control the main heatmap colors (optional)
 #'
 #' @return A ComplexHeatmap object
 #' @keywords internal
@@ -536,60 +610,14 @@ create_heatmap_plot <- function(gsea_results,
                                cluster_rows = TRUE,
                                cluster_columns = TRUE,
                                show_rownames = TRUE,
-                               annotation_colors = NULL) {
-
-  # Check required packages
-  if (!requireNamespace("ComplexHeatmap", quietly = TRUE) ||
-      !requireNamespace("circlize", quietly = TRUE)) {
-    stop("Packages 'ComplexHeatmap' and 'circlize' are required for heatmap plots. Please install them.")
-  }
-
-  # Handle boundary conditions for n_pathways
-  if (n_pathways <= 0) {
-    # For heatmap, return a special empty heatmap object
-    return(ComplexHeatmap::Heatmap(
-      matrix(0, nrow = 1, ncol = 1),
-      name = "Empty",
-      show_row_names = FALSE,
-      show_column_names = FALSE,
-      row_title = "No pathways to display",
-      column_title = "No data available"
-    ))
-  }
-  
-  # Check if we have any results
-  if (nrow(gsea_results) == 0) {
-    return(ComplexHeatmap::Heatmap(
-      matrix(0, nrow = 1, ncol = 1),
-      name = "Empty",
-      show_row_names = FALSE,
-      show_column_names = FALSE,
-      row_title = "No pathways found",
-      column_title = "No data available"
-    ))
-  }
-  
-  # Limit number of pathways
-  if (nrow(gsea_results) > n_pathways) {
-    gsea_results <- gsea_results[order(gsea_results$p.adjust), ][1:n_pathways, ]
-  }
-  
-  # Double-check after limiting
-  if (nrow(gsea_results) == 0) {
-    return(ComplexHeatmap::Heatmap(
-      matrix(0, nrow = 1, ncol = 1),
-      name = "Empty",
-      show_row_names = FALSE,
-      show_column_names = FALSE,
-      row_title = "No pathways after filtering",
-      column_title = "No data available"
-    ))
-  }
+                               annotation_colors = NULL,
+                               col_fun = NULL) {
+  # Note: Input validation (packages, n_pathways, nrow) is done in visualize_gsea()
 
   # Extract leading edge genes
   leading_edges <- lapply(strsplit(gsea_results$leading_edge, ";"), function(x) x[x != ""])
   names(leading_edges) <- gsea_results$pathway_id
-  
+
   # Check if any leading edges are empty
   if (all(lengths(leading_edges) == 0)) {
     return(ComplexHeatmap::Heatmap(
@@ -649,10 +677,13 @@ create_heatmap_plot <- function(gsea_results,
   row_annotation <- row_annotation[rownames(heatmap_data), , drop = FALSE]
 
   # Create row annotation object
+  # Use symmetric breaks centered at 0 to ensure colorRamp2 gets
+  # strictly increasing values even when all NES are same sign
+  nes_abs_max <- max(abs(row_annotation$NES), 0.1)
   ra <- ComplexHeatmap::rowAnnotation(
     NES = row_annotation$NES,
     col = list(NES = circlize::colorRamp2(
-      c(min(row_annotation$NES), 0, max(row_annotation$NES)),
+      c(-nes_abs_max, 0, nes_abs_max),
       c("blue", "white", "red")
     )),
     show_legend = TRUE
@@ -662,10 +693,10 @@ create_heatmap_plot <- function(gsea_results,
   heatmap <- ComplexHeatmap::Heatmap(
     heatmap_data_scaled,
     name = "Z-score",
-    col = circlize::colorRamp2(
-      c(-2, 0, 2),
-      c("blue", "white", "red")
-    ),
+    col = {
+      # Use user-provided col_fun if present; else default blue-white-red
+      if (!is.null(col_fun)) col_fun else circlize::colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+    },
     cluster_rows = cluster_rows,
     cluster_columns = cluster_columns,
     show_row_names = show_rownames,

@@ -82,7 +82,7 @@
 #'   ko_to_kegg = TRUE,
 #'   p_values_threshold = 0.05
 #' )
-#' 
+#'
 #' # View the results
 #' head(abundance_stats_table)
 #' }
@@ -111,9 +111,7 @@ pathway_errorbar_table <- function(abundance,
   # Handle Group vector ordering
   if (!is.null(metadata)) {
     # If metadata is provided, reorder Group to match abundance column order
-    if (!sample_col %in% colnames(metadata)) {
-      stop("Sample column '", sample_col, "' not found in metadata")
-    }
+    require_column(metadata, sample_col, "metadata")
 
     # Create a mapping from sample to group
     sample_to_group <- setNames(Group, metadata[[sample_col]])
@@ -141,18 +139,8 @@ pathway_errorbar_table <- function(abundance,
     stop("Length of Group must match number of columns in abundance matrix")
   }
   
-  # Check for single method
-  if (nlevels(factor(daa_results_df$method)) != 1) {
-    stop("The 'method' column in the 'daa_results_df' data frame contains ",
-         "more than one method. Please filter it to contain only one method.")
-  }
-  
-  if (nlevels(factor(daa_results_df$group1)) != 1 || 
-      nlevels(factor(daa_results_df$group2)) != 1) {
-    stop("The 'group1' or 'group2' column in the 'daa_results_df' data frame ",
-         "contains more than one group. Please filter each to contain only ",
-         "one group.")
-  }
+  # Validate single method and group pair
+  validate_daa_results(daa_results_df)
   
   # Filter for significant features
   daa_results_filtered_df <- daa_results_df[

@@ -2,35 +2,33 @@
 % Please edit documentation in R/pathway_daa.R
 \name{pathway_daa}
 \alias{pathway_daa}
-\alias{calculate_abundance_stats}
 \title{Differential Abundance Analysis for Predicted Functional Pathways}
 \usage{
-calculate_abundance_stats(abundance, metadata, group, features, group1, group2)
-
 pathway_daa(
   abundance,
   metadata,
   group,
   daa_method = "ALDEx2",
   select = NULL,
-  p.adjust = "BH",
+  p_adjust_method = "BH",
   reference = NULL,
   include_abundance_stats = FALSE,
+  include_effect_size = FALSE,
+  p.adjust = NULL,
   ...
 )
 }
 \arguments{
-\item{abundance}{A matrix or data frame with features as rows and samples as columns}
+\item{abundance}{A data frame or matrix containing predicted functional pathway abundance,
+with pathways/features as rows and samples as columns.
+The column names should match the sample names in metadata.
+Values should be counts or abundance measurements.}
 
-\item{metadata}{A data frame containing sample information}
+\item{metadata}{A data frame or tibble containing sample information.
+Must include a 'sample' column with sample identifiers matching the column names in abundance data.}
 
-\item{group}{Character string specifying the group column name in metadata}
-
-\item{features}{Character vector of feature names to calculate statistics for}
-
-\item{group1}{Character string specifying the first group name}
-
-\item{group2}{Character string specifying the second group name}
+\item{group}{Character string specifying the column name in metadata that contains group information
+for differential abundance analysis.}
 
 \item{daa_method}{Character string specifying the method for differential abundance analysis.
 Available choices are:
@@ -49,7 +47,7 @@ Default is "ALDEx2".}
 \item{select}{Vector of sample names to include in the analysis.
 If NULL (default), all samples are included.}
 
-\item{p.adjust}{Character string specifying the method for p-value adjustment.
+\item{p_adjust_method}{Character string specifying the method for p-value adjustment.
 Choices are:
 \itemize{
   \item \code{"BH"}: Benjamini-Hochberg procedure (default)
@@ -67,6 +65,15 @@ If NULL (default), the first level is used as reference.}
 abundance statistics (mean relative abundance, standard deviation,
 and log2 fold change) in the output. Default is FALSE for backward
 compatibility.}
+
+\item{include_effect_size}{Logical value indicating whether to include
+effect size information in the output for ALDEx2 analysis. When TRUE,
+additional columns are added including effect_size, diff_btw,
+log2_fold_change, rab_all, and overlap. Only applicable for two-group
+comparisons with ALDEx2 method. Default is FALSE for backward
+compatibility.}
+
+\item{p.adjust}{Deprecated. Use \code{p_adjust_method} instead.}
 
 \item{...}{Additional arguments passed to the specific DAA method}
 }
@@ -98,24 +105,24 @@ are included:
   \item \code{log2_fold_change}: Log2 fold change (group2/group1)
 }
 
-Some methods may provide additional columns, such as \code{log2FoldChange}
+Some methods may provide additional columns, such as \code{log2_fold_change}
 for effect size information.
 
-A data frame with columns:
-  \item{feature}{Feature identifier}
-  \item{mean_rel_abundance_group1}{Mean relative abundance for group1}
-  \item{sd_rel_abundance_group1}{Standard deviation of relative abundance for group1}
-  \item{mean_rel_abundance_group2}{Mean relative abundance for group2}
-  \item{sd_rel_abundance_group2}{Standard deviation of relative abundance for group2}
-  \item{log2_fold_change}{Log2 fold change (group2/group1)}
+When \code{include_effect_size = TRUE} and using ALDEx2 method with two groups,
+the following additional effect size columns are included:
+\itemize{
+  \item \code{effect_size}: ALDEx2 effect size (median of the ratio of between-group
+        difference and within-group variance)
+  \item \code{diff_btw}: Median difference between groups in CLR space
+  \item \code{log2_fold_change}: Log2 fold change (same as diff_btw for ALDEx2)
+  \item \code{rab_all}: Median CLR abundance across all samples
+  \item \code{overlap}: Proportion of effect size that is 0 or less
+}
 }
 \description{
 Performs differential abundance analysis on predicted functional pathway data using various statistical methods.
 This function supports multiple methods for analyzing differences in pathway abundance between groups,
 including popular approaches like ALDEx2, DESeq2, edgeR, and others.
-}
-\details{
-Differential Abundance Analysis for Predicted Functional Pathways
 }
 \examples{
 \donttest{
@@ -168,6 +175,15 @@ limma_results <- pathway_daa(abundance, metadata, "group",
 # Analyze specific samples only
 subset_results <- pathway_daa(abundance, metadata, "group",
                              select = c("sample1", "sample2", "sample3", "sample4"))
+
+# Include effect size information for ALDEx2 analysis
+aldex2_with_effect <- pathway_daa(abundance, metadata, "group",
+                                 daa_method = "ALDEx2",
+                                 include_effect_size = TRUE)
+
+# The result will include additional columns: effect_size, diff_btw,
+# log2_fold_change, rab_all, and overlap
+head(aldex2_with_effect)
 }
 
 }
@@ -187,10 +203,4 @@ subset_results <- pathway_daa(abundance, metadata, "group",
   \item Maaslin2: Mallick et al. (2021) Multivariable Association Discovery in Population-scale
         Meta-omics Studies.
 }
-
-Helper function to calculate abundance statistics for differential analysis
-
-This function calculates mean relative abundance, standard deviation, and log2 fold change
-for each feature between two groups.
 }
-\keyword{internal}

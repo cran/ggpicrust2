@@ -1,0 +1,99 @@
+\name{ko_to_go_reference}
+\alias{ko_to_go_reference}
+\docType{data}
+\title{
+KO to GO Reference Mapping Dataset
+}
+\description{
+A comprehensive reference dataset that maps KEGG Orthology (KO) identifiers to Gene Ontology (GO) terms. This dataset enables GO pathway analysis in ggpicrust2 by providing the necessary mappings between functional predictions and GO biological processes, molecular functions, and cellular components.
+}
+\usage{data("ko_to_go_reference")}
+\format{
+  A data frame with the following columns:
+  \describe{
+    \item{\code{go_id}}{Character. GO term identifier in the format "GO:XXXXXXX"}
+    \item{\code{go_name}}{Character. Human-readable name of the GO term}
+    \item{\code{category}}{Character. GO category code. Use \code{table(ko_to_go_reference$category)} to see available categories.}
+    \item{\code{ko_members}}{Character. Semicolon-separated list of KO identifiers associated with this GO term}
+  }
+}
+\details{
+This dataset maps KEGG Orthology (KO) identifiers to Gene Ontology (GO) terms, enabling GO-level functional analysis of PICRUSt2 predictions.
+
+The dataset is built from authoritative biological databases:
+\itemize{
+  \item KEGG REST API DBLINKS field for KO to GO cross-references
+  \item EBI QuickGO API for GO term metadata (names and categories)
+}
+
+KEGG DBLINKS primarily cross-references Molecular Function (MF) GO terms, because KO entries describe individual gene functions that naturally correspond to molecular activities (enzyme activities, binding functions, etc.). The current dataset contains predominantly MF terms with a small number of CC (Cellular Component) terms.
+
+Each GO term includes at least 3 associated KO identifiers, ensuring statistical utility for enrichment analysis.
+}
+\source{
+\itemize{
+  \item KEGG REST API (\url{https://rest.kegg.jp}) — KO entry DBLINKS section
+  \item EBI QuickGO (\url{https://www.ebi.ac.uk/QuickGO/}) — GO term metadata
+}
+}
+\references{
+\itemize{
+  \item Kanehisa, M., & Goto, S. (2000). KEGG: kyoto encyclopedia of genes and genomes. Nucleic acids research, 28(1), 27-30.
+  \item Ashburner, M., et al. (2000). Gene ontology: tool for the unification of biology. Nature genetics, 25(1), 25-29.
+  \item Chen Yang, et al. (2023). ggpicrust2: an R package for PICRUSt2 predicted functional profile analysis and visualization. Bioinformatics, 39(8), btad470.
+}
+}
+\examples{
+# Load the dataset
+data("ko_to_go_reference")
+
+# Explore the dataset structure
+head(ko_to_go_reference)
+str(ko_to_go_reference)
+
+# Check the distribution of GO categories
+table(ko_to_go_reference$category)
+
+# Find GO terms related to polymerase activity
+polymerase_terms <- ko_to_go_reference[
+  grepl("polymerase", ko_to_go_reference$go_name, ignore.case = TRUE), ]
+head(polymerase_terms)
+
+# Get KO members for a specific GO term (RNA polymerase activity)
+rna_pol <- ko_to_go_reference[ko_to_go_reference$go_id == "GO:0003899", ]
+if (nrow(rna_pol) > 0) {
+  ko_list <- strsplit(rna_pol$ko_members, ";")[[1]]
+  cat("KO identifiers for RNA polymerase activity:", paste(ko_list, collapse = ", "))
+}
+
+# Use in pathway analysis
+\dontrun{
+library(ggpicrust2)
+library(tibble)
+
+# Load example data
+data("ko_abundance")
+data("metadata")
+
+# Perform GO pathway GSEA analysis
+gsea_results <- pathway_gsea(
+  abundance = ko_abundance \%>\% column_to_rownames("#NAME"),
+  metadata = metadata \%>\% column_to_rownames("sample_name"),
+  group = "Environment",
+  method = "fgsea",
+  pathway_type = "GO",
+  go_category = "MF",
+  rank_method = "signal2noise"
+)
+
+# View results
+head(gsea_results)
+}
+}
+\seealso{
+\code{\link{pathway_gsea}}, \code{\link{ko_abundance}}, \code{\link{metadata}}
+}
+\keyword{datasets}
+\keyword{microbiome}
+\keyword{functional-analysis}
+\keyword{gene-ontology}
