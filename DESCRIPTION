@@ -1,7 +1,7 @@
 Package: ggpicrust2
 Type: Package
 Title: Make 'PICRUSt2' Output Analysis and Visualization Easier
-Version: 2.5.10
+Version: 2.5.12
 Author: Chen Yang [aut, cre],
   Liangliang Zhang [aut]
 Maintainer: Chen Yang <cafferychen7850@gmail.com>
@@ -10,8 +10,8 @@ Authors@R: c(
     person("Liangliang", "Zhang", email = "lxz716@case.edu ", role = "aut"))
 Description: Provides a convenient way to analyze and visualize 'PICRUSt2' output with pre-defined plots and functions. Allows for generating statistical plots about microbiome functional predictions and offers customization options. Features a one-click option for creating publication-level plots, saving time and effort in producing professional-grade figures. Streamlines the 'PICRUSt2' analysis and visualization process. For more details, see Yang et al. (2023) <doi:10.1093/bioinformatics/btad470>.
 BugReports: https://github.com/cafferychen777/ggpicrust2/issues
-URL: https://github.com/cafferychen777/ggpicrust2
-Additional_repositories: https://bioconductor.org/packages/release/bioc
+URL: https://github.com/cafferychen777/ggpicrust2,
+        https://cafferyang.com/ggpicrust2/
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
@@ -22,14 +22,13 @@ Imports: aplot, dplyr, ggplot2, grid, ggh4x, readr, tibble, tidyr,
 Depends: R (>= 3.5.0)
 Suggests: Biobase, ggdendro, KEGGREST, ComplexHeatmap, BiocGenerics,
         knitr, rmarkdown, testthat (>= 3.0.0), ALDEx2, DESeq2, edgeR,
-        GGally, limma, metagenomeSeq, MicrobiomeStat,
-        SummarizedExperiment, circlize, lefser, fgsea, clusterProfiler,
-        enrichplot, DOSE, ggVennDiagram, UpSetR, igraph, ggridges,
-        ggrepel
+        GGally, limma, MicrobiomeStat, SummarizedExperiment, circlize,
+        lefser, fgsea, clusterProfiler, enrichplot, DOSE,
+        ggVennDiagram, UpSetR, igraph, ggridges, ggrepel
 Config/testthat/edition: 3
 biocViews: Microbiome, Metagenomics, Software
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2026-02-12 12:09:01 UTC; apple
+Packaged: 2026-04-10 11:06:06 UTC; apple
 Repository: CRAN
-Date/Publication: 2026-02-12 16:40:16 UTC
+Date/Publication: 2026-04-10 11:30:09 UTC
