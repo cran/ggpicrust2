@@ -36,6 +36,39 @@ test_that("ko2kegg_abundance handles file input correctly", {
   }
 })
 
+test_that("ko2kegg_abundance uses data when both file and data are supplied", {
+  bad_file <- tempfile(fileext = ".tsv")
+  writeLines(c("bad\tS1", "not_ko\t1"), bad_file)
+  on.exit(unlink(bad_file), add = TRUE)
+
+  ko_to_kegg_reference <- ggpicrust2:::load_reference_data("ko_to_kegg")
+  real_kos <- head(unique(ko_to_kegg_reference$ko_id), 3)
+  valid_data <- data.frame(
+    function. = real_kos,
+    Sample1 = c(10, 20, 30),
+    stringsAsFactors = FALSE
+  )
+
+  expect_warning(
+    result <- ko2kegg_abundance(file = bad_file, data = valid_data),
+    "Using data and ignoring file"
+  )
+  expect_s3_class(result, "data.frame")
+})
+
+test_that("ko2kegg_abundance suppresses progress output by default in non-interactive use", {
+  ko_to_kegg_reference <- ggpicrust2:::load_reference_data("ko_to_kegg")
+  real_kos <- head(unique(ko_to_kegg_reference$ko_id), 3)
+  valid_data <- data.frame(
+    function. = real_kos,
+    Sample1 = c(10, 20, 30),
+    stringsAsFactors = FALSE
+  )
+
+  out <- capture.output(invisible(ko2kegg_abundance(data = valid_data)), type = "output")
+  expect_equal(out, character(0))
+})
+
 test_that("ko2kegg_abundance throws appropriate errors", {
   expect_error(ko2kegg_abundance(), "Please provide either a file or a data.frame")
   expect_error(ko2kegg_abundance(file = "test.pdf"), "File does not exist")
@@ -48,6 +81,40 @@ test_that("ko2kegg_abundance throws appropriate errors", {
   # Non-numeric columns
   non_numeric <- data.frame(function. = c("K00001"), Sample1 = c("text"), stringsAsFactors = FALSE)
   expect_error(ko2kegg_abundance(data = non_numeric), "non-numeric")
+})
+
+test_that("ko2kegg_abundance fails fast when input is not KO data (e.g. EC IDs)", {
+  # EC-number-shaped input: passes the first-column name check (column named
+  # "function") but no ID matches the KO format. Should stop at
+  # validate_feature_ids instead of silently producing an empty matrix.
+  ec_shaped_data <- data.frame(
+    `function` = c("1.1.1.1", "1.1.1.2", "2.7.1.1"),
+    Sample1 = c(10, 20, 30),
+    Sample2 = c(15, 25, 35),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    suppressMessages(ko2kegg_abundance(data = ec_shaped_data)),
+    "None of the feature IDs match expected KO format"
+  )
+})
+
+test_that("ko2kegg_abundance fails fast when KO IDs are absent from the KEGG reference", {
+  # KO IDs that pass format validation (K#####) but are not in the reference.
+  # Use IDs outside the current KEGG space to trigger the all-zero branch.
+  unknown_ko_data <- data.frame(
+    function. = c("K99991", "K99992", "K99993"),
+    Sample1 = c(10, 20, 30),
+    Sample2 = c(15, 25, 35),
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    suppressMessages(ko2kegg_abundance(data = unknown_ko_data)),
+    "No KO IDs in the input matched any KEGG pathway"
+  )
 })
 
 test_that("ko2kegg_abundance preserves sample names and removes zero pathways", {
@@ -67,4 +134,70 @@ test_that("ko2kegg_abundance preserves sample names and removes zero pathways", 
     expect_equal(colnames(result), c("SampleA", "SampleB"))
     expect_true(all(rowSums(result) > 0))
   }
+})
+
+test_that("KEGG pathway filter removes non-pathway buckets", {
+  ko_to_kegg_reference <- ggpicrust2:::load_reference_data("ko_to_kegg")
+  filtered_reference <- ggpicrust2:::filter_kegg_reference_to_pathways(ko_to_kegg_reference)
+
+  expect_false("ko01001" %in% filtered_reference$pathway_id)
+  expect_false("ko99980" %in% filtered_reference$pathway_id)
+  expect_false(any(grepl("^(09180|09190)\\b", filtered_reference$level1)))
+})
+
+test_that("prokaryote filter removes eukaryotic pathways and keeps microbial disease pathways", {
+  ko_to_kegg_reference <- ggpicrust2:::load_reference_data("ko_to_kegg")
+  pathway_reference <- ggpicrust2:::filter_kegg_reference_to_pathways(ko_to_kegg_reference)
+  filtered_reference <- ggpicrust2:::filter_kegg_reference_for_prokaryotes(pathway_reference)
+
+  expect_false("ko05200" %in% filtered_reference$pathway_id)
+  expect_false("ko04910" %in% filtered_reference$pathway_id)
+  expect_true("ko05130" %in% filtered_reference$pathway_id)
+  expect_true("ko01501" %in% filtered_reference$pathway_id)
+
+  expect_false(any(grepl("^09150\\b", filtered_reference$level1)))
+  expect_false(any(
+    grepl("^09160\\b", filtered_reference$level1) &
+      !grepl("^(09171|09175)\\b", filtered_reference$level2)
+  ))
+  expect_true(any(grepl("^09171\\b", filtered_reference$level2)))
+  expect_true(any(grepl("^09175\\b", filtered_reference$level2)))
+})
+
+test_that("ko2kegg_abundance applies pathway and prokaryote filters to output pathways", {
+  ko_to_kegg_reference <- ggpicrust2:::load_reference_data("ko_to_kegg")
+  real_kos <- head(unique(ko_to_kegg_reference$ko_id), 10)
+
+  mock_ko_data <- data.frame(
+    function. = real_kos,
+    Sample1 = seq_along(real_kos),
+    stringsAsFactors = FALSE
+  )
+
+  result <- suppressMessages(ko2kegg_abundance(data = mock_ko_data))
+
+  expect_false("ko01001" %in% rownames(result))
+  expect_false("ko99980" %in% rownames(result))
+  expect_false("ko05200" %in% rownames(result))
+})
+
+test_that("filter_for_prokaryotes = FALSE keeps true eukaryotic pathways but not non-pathway buckets", {
+  ko_to_kegg_reference <- ggpicrust2:::load_reference_data("ko_to_kegg")
+  kos <- unique(c(
+    ko_to_kegg_reference$ko_id[ko_to_kegg_reference$pathway_id == "ko05200"],
+    ko_to_kegg_reference$ko_id[ko_to_kegg_reference$pathway_id == "ko99980"]
+  ))
+
+  mock_ko_data <- data.frame(
+    function. = head(kos, 20),
+    Sample1 = seq_len(min(20, length(kos))),
+    stringsAsFactors = FALSE
+  )
+
+  result <- suppressMessages(
+    ko2kegg_abundance(data = mock_ko_data, filter_for_prokaryotes = FALSE)
+  )
+
+  expect_true("ko05200" %in% rownames(result))
+  expect_false("ko99980" %in% rownames(result))
 })

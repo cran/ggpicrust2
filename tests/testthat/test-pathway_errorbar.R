@@ -248,3 +248,152 @@ test_that("pathway_errorbar_table function works correctly", {
                     "log2_fold_change", "p_adjust")
   expect_true(all(expected_cols %in% colnames(result)))
 })
+
+test_that("pathway_errorbar and pathway_errorbar_table share the same mean/sd source", {
+  # Regression guard for the hand-rolled `pivot_longer %>% group_by %>%
+  # summarise(mean(value), sd(value))` path that used to live inside
+  # pathway_errorbar(). That path diverged from pathway_errorbar_table()
+  # (which went through calculate_abundance_stats()) on NA handling and
+  # was a latent bug: fix one path, miss the other. Both entry points now
+  # route through summarize_abundance_by_group(), so the per-feature /
+  # per-group mean and sd must be numerically identical.
+  td <- create_errorbar_test_data(
+    n_features = 5,
+    p_adjust = c(0.01, 0.02, 0.03, 0.04, 0.05)
+  )
+
+  stats_tbl <- pathway_errorbar_table(
+    abundance = td$abundance,
+    daa_results_df = td$daa_results_df,
+    Group = td$Group,
+    p_values_threshold = 0.05
+  )
+
+  # Reach into the plot to grab the exact data frame ggplot consumed.
+  plot <- pathway_errorbar(
+    abundance = td$abundance,
+    daa_results_df = td$daa_results_df,
+    Group = td$Group,
+    p_values_threshold = 0.05,
+    x_lab = "pathway_name"
+  )
+  # The first patchwork panel is the errorbar plot itself; its $data holds
+  # the long-format summary the new code feeds to ggplot.
+  errorbar_data <- plot[[1]]$data
+
+  # For each (feature, group) pair the plot used, the table must agree.
+  group1_name <- unique(td$daa_results_df$group1)[1]
+  group2_name <- unique(td$daa_results_df$group2)[1]
+  for (feat in unique(as.character(errorbar_data$name))) {
+    tbl_row <- stats_tbl[stats_tbl$feature == feat, , drop = FALSE]
+    if (nrow(tbl_row) == 0) next
+
+    plot_g1 <- errorbar_data[
+      as.character(errorbar_data$name) == feat &
+        as.character(errorbar_data$group) == group1_name,
+    ]
+    plot_g2 <- errorbar_data[
+      as.character(errorbar_data$name) == feat &
+        as.character(errorbar_data$group) == group2_name,
+    ]
+
+    expect_equal(plot_g1$mean, tbl_row$mean_rel_abundance_group1,
+                 tolerance = 1e-12, info = feat)
+    expect_equal(plot_g1$sd, tbl_row$sd_rel_abundance_group1,
+                 tolerance = 1e-12, info = feat)
+    expect_equal(plot_g2$mean, tbl_row$mean_rel_abundance_group2,
+                 tolerance = 1e-12, info = feat)
+    expect_equal(plot_g2$sd, tbl_row$sd_rel_abundance_group2,
+                 tolerance = 1e-12, info = feat)
+  }
+})
+
+test_that("pathway_errorbar rejects samples with zero total abundance", {
+  # Regression: the relative-abundance conversion used to be
+  # `apply(t(mat), 1, function(x) x / sum(x))`, which produced silent NaN
+  # for any sample column whose total was 0. Those NaN propagated into
+  # the plotted error bars without any warning. The zero-sum sample must
+  # now surface as an actionable error that names the offending column.
+  td <- create_errorbar_test_data(
+    n_features = 6,
+    p_adjust = c(0.01, 0.02, 0.03, 0.04, 0.05, 0.06)
+  )
+  zero_sample <- colnames(td$abundance)[1]
+  td$abundance[, zero_sample] <- 0
+
+  expect_error(
+    pathway_errorbar(
+      abundance = td$abundance,
+      daa_results_df = td$daa_results_df,
+      Group = td$Group,
+      p_values_threshold = 0.05,
+      x_lab = "pathway_name"
+    ),
+    regexp = zero_sample
+  )
+})
+
+test_that("pathway_errorbar preserves a method-native log2_fold_change instead of overwriting it with a mean-ratio", {
+  # Regression: the function defensively added log2_fold_change as NA
+  # only when missing, then unconditionally OVERWROTE every row with a
+  # log2 of a relative-abundance mean ratio. For methods that ship
+  # their own model-based effect size (DESeq2, edgeR, limma voom, LinDA,
+  # Maaslin2, metagenomeSeq, and ALDEx2 with include_effect_size), the
+  # bar in the side panel then disagreed with the p_adjust in the next
+  # panel -- two outputs of the same fit telling different stories.
+  # The fix only runs the mean-ratio fallback when no log2_fold_change
+  # column is supplied.
+  td <- create_errorbar_test_data(n_features = 5, p_adjust = rep(0.01, 5))
+
+  # Distinctive sentinel values that the mean-ratio fallback cannot
+  # coincidentally produce.
+  sentinel <- c(99, -99, 77, -77, 42)
+  td$daa_results_df$log2_fold_change <- sentinel
+
+  p <- pathway_errorbar(
+    abundance      = td$abundance,
+    daa_results_df = td$daa_results_df,
+    Group          = td$Group,
+    p_values_threshold = 0.05,
+    x_lab          = "pathway_name"
+  )
+
+  # The returned patchwork exposes the log2-fold-change panel data via
+  # the main plot and one of the sub-patches; both must carry the user-
+  # supplied values exactly. We compare sets because the plot reorders
+  # features for display.
+  plot_log2fc <- p$data$log2_fold_change
+  expect_setequal(plot_log2fc, sentinel)
+})
+
+test_that("pathway_errorbar falls back to mean-ratio log2_fold_change when the column is absent", {
+  # Guard: methods without a model-based effect size (ALDEx2 with
+  # include_effect_size = FALSE, Lefser, user-supplied frames without
+  # a log2_fold_change column) should still get a bar in the side
+  # panel. The mean-ratio fallback must remain in place for that case.
+  td <- create_errorbar_test_data(n_features = 5, p_adjust = rep(0.01, 5))
+  # No log2_fold_change column on input.
+  expect_false("log2_fold_change" %in% colnames(td$daa_results_df))
+
+  p <- pathway_errorbar(
+    abundance      = td$abundance,
+    daa_results_df = td$daa_results_df,
+    Group          = td$Group,
+    p_values_threshold = 0.05,
+    x_lab          = "pathway_name"
+  )
+
+  # Every feature should get a non-NA fallback log2_fold_change value.
+  expect_true("log2_fold_change" %in% colnames(p$data))
+  expect_false(any(is.na(p$data$log2_fold_change)))
+})
+
+# Regression: several theme() calls used `legend.position = "non"` (typo).
+# In ggplot2 4.x any unrecognized string silently falls back to hiding the
+# legend, so the plot looked correct -- but a future ggplot2 release that
+# tightens this check would turn the typo into an error. Lock the spelling.
+test_that("pathway_errorbar uses legend.position = 'none' (not 'non')", {
+  body_src <- paste(deparse(body(ggpicrust2::pathway_errorbar)), collapse = "\n")
+  expect_false(grepl("legend\\.position\\s*=\\s*\"non\"", body_src))
+  expect_true(grepl("legend\\.position\\s*=\\s*\"none\"", body_src))
+})

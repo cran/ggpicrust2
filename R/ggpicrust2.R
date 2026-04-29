@@ -13,10 +13,13 @@
 #' - "metagenomeSeq": Fit logistic regression models to test for differential abundance between groups using metagenomeSeq
 #' - "LinDA": Linear models for differential abundance analysis of microbiome compositional data
 #' - "Maaslin2": Multivariate Association with Linear Models (MaAsLin2) for differential abundance analysis
-#' @param ko_to_kegg A character to control the conversion of KO abundance to KEGG abundance
+#' @param ko_to_kegg Logical or logical-like string controlling conversion of
+#'   KO abundance to KEGG pathway abundance.
 #' @param filter_for_prokaryotes Logical. If TRUE (default), filters out KEGG pathways
 #'   that are specific to eukaryotes (e.g., human diseases, organismal systems) when
 #'   ko_to_kegg = TRUE. Set to FALSE to include all KEGG pathways.
+#' @param p_adjust_method A character specifying the method for p-value adjustment,
+#'   default is "BH".
 #' @param p.adjust a character specifying the method for p-value adjustment, default is "BH", choices are:
 #'- "BH": Benjamini-Hochberg correction
 #'- "holm": Holm's correction
@@ -136,14 +139,27 @@ ggpicrust2 <- function(file = NULL,
                        daa_method = "ALDEx2",
                        ko_to_kegg = FALSE,
                        filter_for_prokaryotes = TRUE,
-                       p.adjust = "BH",
+                       p_adjust_method = "BH",
                        order = "group",
                        p_values_bar = TRUE,
                        x_lab = NULL,
                        select = NULL,
                        reference = NULL,
                        colors = NULL,
-                       p_values_threshold = 0.05) {
+                       p_values_threshold = 0.05,
+                       p.adjust = NULL) {
+  # Backward compatibility for the deprecated `p.adjust` parameter. We
+  # keep it accepted (with NULL default so we can distinguish unset from
+  # set) but migrate users onto `p_adjust_method` to match the rest of
+  # the package. Only warn when the caller actually supplied it.
+  if (!is.null(p.adjust)) {
+    warning("'p.adjust' parameter is deprecated. Use 'p_adjust_method' instead.",
+            call. = FALSE)
+    p_adjust_method <- p.adjust
+  }
+  ko_to_kegg <- normalize_logical_flag(ko_to_kegg, "ko_to_kegg")
+  filter_for_prokaryotes <- normalize_logical_flag(filter_for_prokaryotes, "filter_for_prokaryotes")
+
   # Input validation
   if (is.null(file) && is.null(data)) {
     stop("Error: Please provide either a 'file' path (character string) or a 'data' data frame.")
@@ -171,12 +187,23 @@ ggpicrust2 <- function(file = NULL,
     }
   }
 
-  # Validate daa_method early
-
-  if (daa_method == "Lefse") {
-    stop("The 'Lefse' method is not suitable for ggpicrust2() as it does not output p-values.")
+  # Validate daa_method early. Lefser returns LDA effect sizes, not
+  # p-values per pathway, so it cannot drive the downstream
+  # pathway_errorbar() step that ggpicrust2() produces. Accept the
+  # historical misspelling "Lefse" for backward compatibility but
+  # forward it through as an error with the canonical name.
+  if (daa_method %in% c("Lefser", "Lefse")) {
+    stop("The 'Lefser' method is not suitable for ggpicrust2() as it does not output p-values.")
   }
 
+  # `ko_to_kegg = TRUE` aggregates KO abundances into KEGG pathways, so it is
+  # only meaningful when the input is KO abundance (pathway = "KO"). Pairing it
+  # with EC/MetaCyc produces an empty matrix and a cryptic downstream error.
+  if (ko_to_kegg && !identical(pathway, "KO")) {
+    stop(sprintf(
+      "`ko_to_kegg = TRUE` requires `pathway = \"KO\"`, but got pathway = \"%s\".\n  - For EC or MetaCyc data, set `ko_to_kegg = FALSE`.\n  - For KO -> KEGG pathway analysis, set `pathway = \"KO\"`.",
+      pathway))
+  }
 
   # Step 1: Load abundance data
   if (ko_to_kegg) {
@@ -199,23 +226,32 @@ ggpicrust2 <- function(file = NULL,
     abundance <- abundance[, -1]
   }
 
-  # Align abundance and metadata once for consistent downstream behavior.
-  # This prevents Group/order mismatches in pathway_errorbar() when metadata
-  # row order differs from abundance column order.
+  # Align once at the wrapper boundary. Both DAA and plotting consume this
+  # same sample order, so pathway_daa() is called with an explicit
+  # pre-aligned contract below instead of redoing the same alignment.
   aligned <- align_samples(abundance, metadata, verbose = FALSE)
   abundance <- aligned$abundance
   metadata <- aligned$metadata
 
   # Step 2: Differential abundance analysis
-  message("Performing pathway differential abundance analysis...\n")
+  #
+  # Do NOT forward `select` to pathway_daa() here. In this wrapper `select`
+  # is documented as pathway/feature names (see @param select -- "A vector
+  # consisting of pathway names to be selected"), whereas pathway_daa()'s
+  # own `select` argument means sample names. Passing pathway names into
+  # pathway_daa() immediately failed with "Some selected samples not in
+  # abundance data". The user-supplied `select` is forwarded to
+  # pathway_errorbar() below, which is where feature-level filtering for
+  # the plot actually happens; pathway_daa() runs on the full sample set.
   daa_results_df <- pathway_daa(
     abundance = abundance,
     metadata = metadata,
     group = group,
     daa_method = daa_method,
-    select = select,
-    p.adjust = p.adjust,
-    reference = reference
+    p_adjust_method = p_adjust_method,
+    reference = reference,
+    .pre_aligned = TRUE,
+    .sample_col = aligned$sample_col
   )
 
   # Check for significant biomarkers

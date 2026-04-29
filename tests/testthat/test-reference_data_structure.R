@@ -59,31 +59,42 @@ test_that("ko2kegg_abundance is deterministic", {
   expect_identical(result1, result2)
 })
 
-test_that("ko2kegg_abundance handles edge cases", {
-  # Non-existent KOs return empty result with expected warning
-  fake_data <- data.frame(function. = c("K99999", "K88888"), S1 = c(100, 200), stringsAsFactors = FALSE)
-  expect_warning(
-    result <- suppressMessages(ko2kegg_abundance(data = fake_data)),
-    "No KO IDs matched"
-  )
-  expect_equal(nrow(result), 0)
+test_that("ko2kegg_abundance fails fast on total KO/KEGG mismatch", {
+  # Since 2.5.13 (commit 72eb140, "Fail fast on ko_to_kegg/pathway misuse"),
+  # ko2kegg_abundance() errors out instead of silently returning an empty
+  # matrix when no input KO maps into any KEGG pathway. Silent empties
+  # cascade into cryptic downstream DAA failures ("No features in abundance
+  # data") that are hard to diagnose, so the strict error is intentional.
 
-  # All-zero abundances return empty result with expected warning
+  # Well-formed KO IDs that are not present in the KEGG reference.
+  fake_data <- data.frame(function. = c("K99999", "K88888"),
+                          S1 = c(100, 200),
+                          stringsAsFactors = FALSE)
+  expect_error(
+    suppressMessages(ko2kegg_abundance(data = fake_data)),
+    "No KO IDs in the input matched any KEGG pathway"
+  )
+
+  # Real KO IDs, but all-zero abundances collapse every pathway row to zero,
+  # which the function treats as the same "nothing to analyze" condition.
   ko_to_kegg_reference <- ggpicrust2:::load_reference_data("ko_to_kegg")
   real_kos <- head(unique(ko_to_kegg_reference$ko_id), 10)
-  zero_data <- data.frame(function. = real_kos, S1 = rep(0, 10), stringsAsFactors = FALSE)
-  expect_warning(
-    result <- suppressMessages(ko2kegg_abundance(data = zero_data)),
-    "No KO IDs matched"
+  zero_data <- data.frame(function. = real_kos,
+                          S1 = rep(0, 10),
+                          stringsAsFactors = FALSE)
+  expect_error(
+    suppressMessages(ko2kegg_abundance(data = zero_data)),
+    "No KO IDs in the input matched any KEGG pathway"
   )
-  expect_equal(nrow(result), 0)
 })
 
 test_that("prepare_gene_sets creates valid gene sets from reference data", {
   gene_sets <- prepare_gene_sets("KEGG")
 
   expect_type(gene_sets, "list")
-  expect_gt(length(gene_sets), 500)
+  expect_gt(length(gene_sets), 400)
+  expect_false("ko01001" %in% names(gene_sets))
+  expect_false("ko99980" %in% names(gene_sets))
 
   set_sizes <- sapply(gene_sets, length)
   expect_gt(min(set_sizes), 0)

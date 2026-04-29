@@ -317,6 +317,34 @@ test_that("taxa_contribution_heatmap returns ggplot", {
   expect_s3_class(p, "ggplot")
 })
 
+test_that("taxa_contribution_heatmap relabels columns using pathway_annotation output", {
+  # Regression: the heatmap looked for an `annotation_data$pathway` ID
+  # column, but pathway_annotation() emits the ID in `feature` (with
+  # `description` as the human-readable label). Under the old code, the
+  # left-join returned all-NA names and the axis silently kept the raw
+  # function IDs. Accept both `feature`/`description` (non-ko_to_kegg)
+  # and `pathway`/`pathway_name` (ko_to_kegg) column naming.
+  td <- create_contrib_test_data()
+  contrib <- read_contrib_file(data = td$contrib_raw)
+  agg <- aggregate_taxa_contributions(contrib, top_n = 4)
+
+  ann <- data.frame(
+    feature = c("K00001", "K00002", "K00003"),
+    description = c("alpha desc", "beta desc", "gamma desc"),
+    stringsAsFactors = FALSE
+  )
+  p <- taxa_contribution_heatmap(
+    agg,
+    annotation_data = ann,
+    cluster_rows = FALSE,
+    cluster_cols = FALSE
+  )
+  expect_s3_class(p, "ggplot")
+  func_levels <- levels(p$data$func)
+  # At least one of the labels should be the pathway_annotation description.
+  expect_true(any(c("alpha desc", "beta desc", "gamma desc") %in% func_levels))
+})
+
 test_that("taxa_contribution_heatmap with clustering returns patchwork", {
   skip_if_not_installed("ggdendro")
 
@@ -336,8 +364,11 @@ test_that("aggregate_taxa_contributions errors on empty data after filtering", {
   td <- create_contrib_test_data()
   contrib <- read_contrib_file(data = td$contrib_raw)
 
+  # Use a syntactically valid but non-existent pathway ID so the filter
+  # reaches the "no matching KOs in contrib_data" branch rather than the
+  # strict ID-shape check.
   expect_error(
-    aggregate_taxa_contributions(contrib, pathway_ids = "nonexistent_pathway"),
+    aggregate_taxa_contributions(contrib, pathway_ids = "ko99999"),
     "No data remaining"
   )
 })

@@ -94,7 +94,110 @@ test_that("prepare_gene_sets works for KEGG and MetaCyc pathway types", {
   gene_sets_kegg <- prepare_gene_sets("KEGG")
   expect_type(gene_sets_kegg, "list")
   expect_true(length(gene_sets_kegg) > 0)
+  expect_false("ko01001" %in% names(gene_sets_kegg))
+  expect_false("ko99980" %in% names(gene_sets_kegg))
 
   gene_sets_metacyc <- prepare_gene_sets("MetaCyc")
   expect_type(gene_sets_metacyc, "list")
+})
+
+test_that("calculate_rank_metric aligns by sample column and handles constant t-test rows", {
+  calc <- getFromNamespace("calculate_rank_metric", "ggpicrust2")
+  abundance <- matrix(
+    c(
+      1, 1, 1, 1,
+      1, 2, 8, 9
+    ),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(c("K00001", "K00002"), paste0("S", 1:4))
+  )
+  metadata <- data.frame(
+    sample_name = paste0("S", 1:4),
+    group = c("A", "A", "B", "B"),
+    stringsAsFactors = FALSE
+  )
+
+  metric <- calc(abundance, metadata, "group", method = "t_test")
+  expect_named(metric, rownames(abundance))
+  expect_equal(unname(metric["K00001"]), 0)
+  expect_true(is.finite(metric["K00002"]))
+})
+
+test_that("pathway_gsea validates PICRUSt2 #NAME input after stripping the ID column", {
+  skip_if_not_installed("fgsea")
+
+  abundance <- data.frame(
+    `#NAME` = paste0("K", sprintf("%05d", 1:8)),
+    S1 = c(1:8),
+    S2 = c(2:9),
+    S3 = c(10:17),
+    S4 = c(11:18),
+    check.names = FALSE
+  )
+  metadata <- data.frame(
+    sample = paste0("S", 1:4),
+    group = c("A", "A", "B", "B"),
+    stringsAsFactors = FALSE
+  )
+
+  local_mocked_bindings(
+    prepare_gene_sets = function(...) {
+      list("ko00010" = abundance$`#NAME`)
+    },
+    run_fgsea = function(...) {
+      data.frame(
+        pathway_id = "ko00010",
+        pathway_name = "ko00010",
+        size = 8,
+        ES = 0.5,
+        NES = 1.2,
+        pvalue = 0.01,
+        p.adjust = 0.02,
+        leading_edge = "K00001",
+        stringsAsFactors = FALSE
+      )
+    }
+  )
+
+  result <- pathway_gsea(
+    abundance = abundance,
+    metadata = metadata,
+    group = "group",
+    method = "fgsea"
+  )
+  expect_s3_class(result, "data.frame")
+  expect_equal(result$pathway_id, "ko00010")
+})
+
+test_that("prepare_gene_sets warns when `organism` is set to a non-default value but still returns the same KO gene sets", {
+  # Regression: `organism` was documented on both `prepare_gene_sets()`
+  # and `pathway_gsea()` but the KEGG and GO branches both read
+  # KO-based reference tables (`ko_to_kegg_reference`,
+  # `ko_to_go_reference`) that are organism-independent by
+  # construction. A user passing `organism = "hsa"` silently got the
+  # same gene sets as the default -- a promise/implementation gap --
+  # which we now surface as a deprecation warning. The gene-set
+  # content must remain identical across organism values (the
+  # argument truly has no effect), both for KEGG and GO.
+  expect_warning(
+    gs_hsa <- prepare_gene_sets("KEGG", organism = "hsa"),
+    regexp = "organism.*deprecated.*no effect"
+  )
+  gs_default <- suppressWarnings(prepare_gene_sets("KEGG", organism = "ko"))
+  expect_identical(gs_hsa, gs_default)
+
+  # Default value does not warn.
+  expect_warning(
+    prepare_gene_sets("KEGG", organism = "ko"),
+    regexp = NA
+  )
+
+  # GO branch: same contract.
+  expect_warning(
+    go_hsa <- prepare_gene_sets("GO", organism = "hsa"),
+    regexp = "organism.*deprecated.*no effect"
+  )
+  go_default <- suppressWarnings(prepare_gene_sets("GO", organism = "ko"))
+  expect_identical(go_hsa, go_default)
 })

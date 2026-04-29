@@ -97,13 +97,20 @@ clean_ko_abundance <- function(abundance, verbose = TRUE) {
 #' @param threshold Minimum proportion of overlap required (default: 0.5)
 #' @return Logical indicating whether vectors have sufficient overlap
 #' @noRd
-samples_match <- function(vec1, vec2, threshold = 0.5) {
+samples_match <- function(vec1, vec2, threshold = 0.5, require_unique = FALSE) {
   vec1 <- as.character(vec1)
   vec2 <- as.character(vec2)
   n_common <- length(intersect(vec1, vec2))
   min_length <- min(length(vec1), length(vec2))
 
   if (min_length == 0) return(FALSE)
+
+  # A true sample identifier column has one row per sample, so its values
+  # must be unique. Without this guard, a low-cardinality categorical column
+  # (e.g. "group", "batch") whose levels coincidentally include a few sample
+  # names can pass the overlap threshold.
+  if (require_unique && anyDuplicated(vec1)) return(FALSE)
+
   n_common / min_length >= threshold
 }
 
@@ -128,23 +135,41 @@ find_sample_column <- function(metadata, abundance_samples) {
     "samples", "Samples"
   )
 
+  # Priority 1 uses a more lenient overlap threshold (50%) because a
+  # standard column name ("sample", "sample_id", etc.) is itself strong
+  # evidence that this is the sample identifier -- partial overlap is
+  # usually just metadata filtering upstream. But uniqueness is not
+  # optional: a "sample" column with duplicate values is not a sample ID
+  # no matter what it's called, so enforce require_unique = TRUE here
+  # too to prevent mis-detection on metadata whose standard-named column
+  # happens to be a subject_id / replicate_id with repeats.
   for (col in standard_names) {
     if (col %in% colnames(metadata)) {
-      if (samples_match(metadata[[col]], abundance_samples)) {
+      if (samples_match(metadata[[col]], abundance_samples,
+                        require_unique = TRUE)) {
         return(col)
       }
     }
   }
 
-  # Priority 2: Any column that matches
+  # Priority 2 scans every column without a name signal, so we require much
+  # stronger evidence: (a) column values must be unique within metadata (a
+  # real sample ID is one-per-row), and (b) near-complete overlap with the
+  # abundance columns (>= 90%). A loose 50% threshold here can silently
+  # pick up a subject_id or batch column whose levels happen to share a
+  # few strings with the sample names.
   for (col in colnames(metadata)) {
-    if (samples_match(metadata[[col]], abundance_samples)) {
+    if (samples_match(metadata[[col]], abundance_samples,
+                      threshold = 0.9, require_unique = TRUE)) {
       return(col)
     }
   }
 
-  # Priority 3: Rownames
-  if (samples_match(rownames(metadata), abundance_samples)) {
+  # Priority 3: rownames -- also require uniqueness and high overlap, since
+  # default integer rownames ("1", "2", ...) should not be mistaken for
+  # sample identifiers.
+  if (samples_match(rownames(metadata), abundance_samples,
+                    threshold = 0.9, require_unique = TRUE)) {
     return(".rownames")
   }
 
@@ -213,6 +238,21 @@ align_samples <- function(abundance, metadata, sample_col = NULL, verbose = TRUE
   }
 
   metadata_samples <- as.character(metadata[[sample_col]])
+
+  # A sample identifier column is a primary key: one row per sample.
+  # find_sample_column() already enforces uniqueness when auto-detecting,
+  # but users who pass `sample_col` explicitly bypass that path. Without
+  # this guard, duplicated IDs silently collapse in match() below
+  # (match() returns only the first hit), so a metadata row is dropped
+  # without warning and the caller gets stats on the wrong sample count.
+  dup_ids <- unique(metadata_samples[duplicated(metadata_samples)])
+  if (length(dup_ids) > 0) {
+    stop(sprintf(
+      "Sample column '%s' contains duplicated IDs: %s. Each metadata row must correspond to a unique sample.",
+      sample_col,
+      paste(head(dup_ids, 5), collapse = ", ")
+    ), call. = FALSE)
+  }
 
   # Find common samples
   common_samples <- intersect(abundance_samples, metadata_samples)
@@ -390,9 +430,15 @@ calculate_log2_fold_change <- function(mean1, mean2, pseudocount = NULL,
 #' @param abundance Data frame or matrix to validate
 #' @param min_samples Minimum number of samples required (default: 2)
 #' @param require_numeric Whether all non-ID columns must be numeric (default: TRUE)
+#' @param check_zero_columns If TRUE (default), reject sample columns whose
+#'   total abundance is zero. Such samples would turn into NaN inside
+#'   `x / sum(x)` and then be silently dropped by downstream
+#'   `mean(..., na.rm = TRUE)`, producing stats computed from the wrong
+#'   sample size without any warning.
 #' @return TRUE if valid, otherwise stops with error
 #' @noRd
-validate_abundance <- function(abundance, min_samples = 2, require_numeric = TRUE) {
+validate_abundance <- function(abundance, min_samples = 2, require_numeric = TRUE,
+                               check_zero_columns = TRUE) {
   if (!is.data.frame(abundance) && !is.matrix(abundance)) {
     stop("'abundance' must be a data frame or matrix")
   }
@@ -409,7 +455,178 @@ validate_abundance <- function(abundance, min_samples = 2, require_numeric = TRU
     }
   }
 
+  if (check_zero_columns) {
+    numeric_mat <- abundance_to_numeric_matrix(abundance)
+    if (!is.null(numeric_mat)) {
+      col_totals <- colSums(numeric_mat, na.rm = FALSE)
+      bad <- which(!is.finite(col_totals) | col_totals == 0)
+      if (length(bad) > 0) {
+        offenders <- column_labels(numeric_mat, bad)
+        stop(sprintf(
+          "Invalid abundance data: %d sample column(s) have a total abundance of 0 or NA: %s.\n  Each sample must contain at least one non-zero feature. Drop or reprocess these samples before analysis.",
+          length(bad),
+          paste(head(offenders, 5), collapse = ", ")
+        ), call. = FALSE)
+      }
+    }
+  }
+
   TRUE
+}
+
+#' Extract the numeric sample-by-feature matrix from abundance input
+#'
+#' `validate_abundance()` accepts either a matrix or a data.frame that may
+#' carry a non-numeric ID column. For the zero-column check we only care
+#' about the numeric part; this helper normalizes both shapes.
+#'
+#' Returns NULL when no numeric columns exist (the caller has already
+#' errored via `require_numeric` when appropriate).
+#' @noRd
+abundance_to_numeric_matrix <- function(abundance) {
+  if (is.matrix(abundance)) {
+    if (!is.numeric(abundance)) return(NULL)
+    return(abundance)
+  }
+  # data.frame
+  numeric_cols <- vapply(abundance, is.numeric, logical(1))
+  if (!any(numeric_cols)) return(NULL)
+  as.matrix(abundance[, numeric_cols, drop = FALSE])
+}
+
+#' Return human-readable column labels for a set of positions
+#'
+#' Prefer column names when they exist and are non-empty; otherwise fall
+#' back to the position index so the error is still actionable.
+#' @noRd
+column_labels <- function(x, positions) {
+  nm <- colnames(x)
+  if (is.null(nm)) return(as.character(positions))
+  labs <- nm[positions]
+  labs[!nzchar(labs)] <- as.character(positions[!nzchar(labs)])
+  labs
+}
+
+#' Compute Relative Abundance with Zero-Column Guard
+#'
+#' Divides each sample column by its column sum to produce relative
+#' abundances. Replaces the duplicated `apply(., 2, function(x) x / sum(x))`
+#' idiom and -- more importantly -- refuses zero-sum columns instead of
+#' silently producing NaN that later gets dropped by `na.rm = TRUE` in
+#' downstream aggregations (which would compute stats on fewer samples
+#' than the user expects without any indication).
+#'
+#' @param abundance Numeric matrix or numeric-only data frame with features
+#'   as rows and samples as columns.
+#' @param context Short string describing the caller, used in the error
+#'   message so the user knows where the zero-sum sample was detected.
+#' @return A matrix of relative abundances with the same shape as the
+#'   input.
+#' @noRd
+compute_relative_abundance <- function(abundance, context = "abundance") {
+  mat <- if (is.matrix(abundance)) abundance else as.matrix(abundance)
+  if (!is.numeric(mat)) {
+    stop(sprintf("Cannot compute relative abundance: %s is not numeric.", context),
+         call. = FALSE)
+  }
+  col_totals <- colSums(mat, na.rm = FALSE)
+  bad <- which(!is.finite(col_totals) | col_totals == 0)
+  if (length(bad) > 0) {
+    offenders <- column_labels(mat, bad)
+    stop(sprintf(
+      "Cannot compute relative abundance for %s: %d sample column(s) have a total of 0 or NA: %s.\n  Drop or reprocess these samples before analysis.",
+      context, length(bad),
+      paste(head(offenders, 5), collapse = ", ")
+    ), call. = FALSE)
+  }
+  sweep(mat, 2, col_totals, "/")
+}
+
+#' Summarize Per-Feature Mean and SD by Group
+#'
+#' Given a relative-abundance matrix (features x samples, already normalized)
+#' and a parallel vector of per-sample group assignments, return a long-format
+#' data frame with one row per (feature, group) combination containing the
+#' mean and standard deviation across the samples in that group.
+#'
+#' This helper is the single source of truth for the per-feature-per-group
+#' mean/sd that both `calculate_abundance_stats()` (used by `pathway_daa()`
+#' and `pathway_errorbar_table()`) and `pathway_errorbar()` need. Previously
+#' `pathway_errorbar()` recomputed these via a `pivot_longer + group_by +
+#' summarise` chain without `na.rm`, which silently diverged from the table
+#' path whenever any NA slipped through the pipeline.
+#'
+#' @param relative_abundance Numeric matrix (features x samples). Callers
+#'   are expected to have already normalized with
+#'   `compute_relative_abundance()` (or any equivalent) and validated
+#'   samples with `validate_abundance()` so that zero-sum columns are
+#'   already ruled out.
+#' @param group_vector Character (or coercible) vector of length
+#'   `ncol(relative_abundance)` assigning each sample column to a group.
+#'   NA entries are dropped from the summary.
+#' @return A data frame with columns `name`, `group`, `mean`, `sd` in long
+#'   format. `name` preserves the row order of the input matrix; `group`
+#'   appears in first-seen order from `group_vector`.
+#' @noRd
+summarize_abundance_by_group <- function(relative_abundance, group_vector) {
+  if (!is.matrix(relative_abundance)) {
+    relative_abundance <- as.matrix(relative_abundance)
+  }
+  n_samples <- ncol(relative_abundance)
+  if (length(group_vector) != n_samples) {
+    stop(sprintf(
+      "summarize_abundance_by_group(): group_vector length (%d) must equal ncol(relative_abundance) (%d).",
+      length(group_vector), n_samples
+    ), call. = FALSE)
+  }
+
+  feature_names <- rownames(relative_abundance)
+  if (is.null(feature_names)) {
+    feature_names <- as.character(seq_len(nrow(relative_abundance)))
+  }
+
+  group_chr <- as.character(group_vector)
+  # Preserve first-seen order; drop NA.
+  present <- group_chr[!is.na(group_chr)]
+  unique_groups <- unique(present)
+
+  if (length(unique_groups) == 0) {
+    return(data.frame(
+      name = character(0), group = character(0),
+      mean = numeric(0), sd = numeric(0),
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  # Compute per-group stats first (group-major intermediate), then
+  # interleave to produce feature-major output: (feature1,gA), (feature1,gB),
+  # (feature2,gA), (feature2,gB), .... This matches the row order that
+  # `pathway_errorbar()` previously produced via `group_by(name, group) %>%
+  # summarise()` and keeps downstream `match()`/`order()` code stable
+  # regardless of the `order()` sort method.
+  means <- matrix(NA_real_, nrow = nrow(relative_abundance),
+                  ncol = length(unique_groups),
+                  dimnames = list(feature_names, unique_groups))
+  sds <- means
+  for (g in unique_groups) {
+    mask <- !is.na(group_chr) & group_chr == g
+    sub <- relative_abundance[, mask, drop = FALSE]
+    # `na.rm = TRUE` matches calculate_abundance_stats() so that the two
+    # entry points agree on how to treat NA abundance cells. After the
+    # zero-sum guard in compute_relative_abundance(), the only way NA
+    # can reach here is if the upstream abundance already contained NA.
+    means[, g] <- apply(sub, 1, mean, na.rm = TRUE)
+    sds[, g] <- apply(sub, 1, stats::sd, na.rm = TRUE)
+  }
+
+  n_groups <- length(unique_groups)
+  data.frame(
+    name = rep(feature_names, each = n_groups),
+    group = rep(unique_groups, times = nrow(relative_abundance)),
+    mean = as.vector(t(means)),
+    sd = as.vector(t(sds)),
+    stringsAsFactors = FALSE
+  )
 }
 
 #' Validate Metadata
@@ -588,7 +805,14 @@ validate_feature_ids <- function(ids, type = "auto") {
 
   if (type %in% names(patterns)) {
     invalid <- ids[!grepl(patterns[[type]], ids)]
-    if (length(invalid) > 0 && length(invalid) < length(ids)) {
+    if (length(invalid) == length(ids) && length(ids) > 0) {
+      # Total mismatch: the input is almost certainly the wrong data type.
+      # Fail loudly here so the caller gets an actionable message instead of
+      # an empty downstream matrix.
+      stop(sprintf(
+        "None of the feature IDs match expected %s format (e.g., got '%s'). Check that your input is %s abundance data.",
+        type, paste(head(invalid, 2), collapse = ", "), type))
+    } else if (length(invalid) > 0) {
       warning(sprintf("%d %s IDs don't match expected format (e.g., %s)",
                       length(invalid), type, paste(head(invalid, 2), collapse = ", ")))
     }
@@ -609,6 +833,11 @@ validate_feature_ids <- function(ids, type = "auto") {
 #' @return If filter_zero=FALSE: TRUE. If filter_zero=TRUE: filtered matrix.
 #' @noRd
 validate_daa_input <- function(mat, method = NULL, min_features = 2, filter_zero = FALSE) {
+  # Matrix-quality gate: numeric, no negatives, no duplicated sample names.
+  # NA values only warn (some upstream pipelines emit them legitimately) so
+  # downstream methods can still fail explicitly if they cannot tolerate NAs.
+  validate_numeric_matrix(mat)
+
   # Basic zero checks
   result <- validate_zero_abundance(mat)
 
@@ -673,6 +902,27 @@ validate_choice <- function(value, choices, param_name = "value") {
     stop(sprintf("%s must be one of: %s", param_name, paste(choices, collapse = ", ")))
   }
   TRUE
+}
+
+#' Normalize a scalar logical flag
+#'
+#' Public APIs historically accepted both logical TRUE/FALSE and the string
+#' forms "TRUE"/"FALSE" for some flags. Normalize that contract once at the
+#' boundary so downstream code can use plain logical tests without drifting
+#' between `isTRUE(x)`, `x == TRUE`, and `if (x)` semantics.
+#' @noRd
+normalize_logical_flag <- function(value, param_name) {
+  if (is.logical(value) && length(value) == 1 && !is.na(value)) {
+    return(value)
+  }
+
+  if (is.character(value) && length(value) == 1 && !is.na(value)) {
+    lowered <- tolower(trimws(value))
+    if (lowered %in% c("true", "t", "1")) return(TRUE)
+    if (lowered %in% c("false", "f", "0")) return(FALSE)
+  }
+
+  stop(sprintf("'%s' must be TRUE or FALSE.", param_name), call. = FALSE)
 }
 
 #' Validate Data Frame Input

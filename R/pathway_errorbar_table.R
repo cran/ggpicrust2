@@ -25,7 +25,10 @@
 #' @param metadata Optional data frame containing sample metadata. If provided,
 #'        the Group vector will be reordered to match the abundance column order.
 #' @param sample_col Character string specifying the column name in metadata
-#'        that contains sample identifiers. Default is "sample_name".
+#'        that contains sample identifiers. Default is NULL, which triggers
+#'        auto-detection via the same logic used by \code{pathway_daa()}
+#'        (common names like "sample", "Sample", "sample_id", "sample_name",
+#'        or metadata rownames).
 #'
 #' @return A data frame containing the following columns:
 #' \itemize{
@@ -95,11 +98,12 @@ pathway_errorbar_table <- function(abundance,
                                   ko_to_kegg = FALSE,
                                   p_values_threshold = 0.05,
                                   select = NULL,
-                                  max_features = 30,
-                                  metadata = NULL,
-                                  sample_col = "sample_name") {
-  
-  # Input validation
+	                                  max_features = 30,
+	                                  metadata = NULL,
+	                                  sample_col = NULL) {
+  ko_to_kegg <- normalize_logical_flag(ko_to_kegg, "ko_to_kegg")
+
+	  # Input validation
   if (!is.matrix(abundance) && !is.data.frame(abundance)) {
     stop("'abundance' must be a matrix or data frame")
   }
@@ -108,39 +112,58 @@ pathway_errorbar_table <- function(abundance,
     stop("'daa_results_df' must be a data frame")
   }
 
-  # Handle Group vector ordering
+  # Handle Group vector ordering.
+  #
+  # Two supported input shapes:
+  #   1. metadata is NULL -- Group is assumed to already be in the same
+  #      order as colnames(abundance); we just length-check it below.
+  #   2. metadata is provided -- Group is in metadata-row order and we need
+  #      to realign to abundance-column order. Reuse the package-wide
+  #      align_samples() helper for sample-column detection and reordering
+  #      instead of re-implementing it here; this keeps accepted metadata
+  #      shapes (sample / Sample / sample_id / sample_name / rownames)
+  #      identical to pathway_daa() and ggpicrust2().
   if (!is.null(metadata)) {
-    # If metadata is provided, reorder Group to match abundance column order
-    require_column(metadata, sample_col, "metadata")
-
-    # Create a mapping from sample to group
-    sample_to_group <- setNames(Group, metadata[[sample_col]])
-
-    # Reorder Group to match abundance column order
-    abundance_samples <- colnames(abundance)
-    Group <- sample_to_group[abundance_samples]
-
-    # Check for missing samples
-    if (any(is.na(Group))) {
-      missing_samples <- abundance_samples[is.na(Group)]
-      stop("Some samples in abundance data not found in metadata: ",
-           paste(missing_samples, collapse = ", "))
+    metadata <- as.data.frame(metadata)
+    if (length(Group) != nrow(metadata)) {
+      stop("Length of Group (", length(Group),
+           ") does not match number of rows in metadata (",
+           nrow(metadata), ")")
     }
+    # Attach Group as a private column so align_samples() carries it
+    # through the intersect+reorder step without us needing to track
+    # indices by hand. Column name is prefixed to avoid colliding with
+    # any user column.
+    metadata[[".pet_group"]] <- Group
+    aligned <- align_samples(abundance, metadata,
+                             sample_col = sample_col, verbose = FALSE)
+    abundance <- aligned$abundance
+    Group <- aligned$metadata[[".pet_group"]]
   }
-  
+
   required_cols <- c("feature", "group1", "group2", "p_adjust")
   missing_cols <- setdiff(required_cols, colnames(daa_results_df))
   if (length(missing_cols) > 0) {
-    stop("Missing required columns in daa_results_df: ", 
+    stop("Missing required columns in daa_results_df: ",
          paste(missing_cols, collapse = ", "))
   }
-  
+
   if (length(Group) != ncol(abundance)) {
-    stop("Length of Group must match number of columns in abundance matrix")
+    stop("Length of Group (", length(Group),
+         ") must match number of columns in abundance (",
+         ncol(abundance), ")")
   }
-  
-  # Validate single method and group pair
-  validate_daa_results(daa_results_df)
+
+	  # Validate single method and group pair
+	  validate_daa_results(daa_results_df)
+  if (ko_to_kegg && !"pathway_class" %in% colnames(daa_results_df)) {
+    stop(
+      "The 'pathway_class' column is missing but ko_to_kegg = TRUE. ",
+      "Please use pathway_annotation(..., ko_to_kegg = TRUE) to annotate the data, ",
+      "or set ko_to_kegg = FALSE if you don't need pathway class annotations.",
+      call. = FALSE
+    )
+  }
   
   # Filter for significant features
   daa_results_filtered_df <- daa_results_df[
@@ -166,23 +189,25 @@ pathway_errorbar_table <- function(abundance,
          "Consider adjusting p_values_threshold.")
   }
   
-  # Get group names
-  group1_name <- unique(daa_results_filtered_sub_df$group1)[1]
-  group2_name <- unique(daa_results_filtered_sub_df$group2)[1]
+  # Get group names. validate_daa_results() above hard-rejects multi-pair
+  # input, so daa_results_filtered_sub_df is guaranteed to carry a single
+  # (group1, group2) pair here. Avoid the `unique(...)[1]` idiom because
+  # it LOOKS like "silently pick the first of many" behavior -- that is
+  # exactly the bug we rely on the validator to prevent, and leaving the
+  # idiom in place would mask a validator bypass with silently truncated
+  # results instead of failing fast.
+  group1_name <- daa_results_filtered_sub_df$group1[1]
+  group2_name <- daa_results_filtered_sub_df$group2[1]
   
-  # Calculate abundance statistics using the helper function
-  # Create metadata that matches the abundance column order
-  # The Group vector should be in the same order as colnames(abundance)
+  # Calculate abundance statistics using the helper function.
+  # Group is already confirmed (above) to be in the same order as
+  # colnames(abundance) with matching length, so wrap it into a minimal
+  # metadata frame for calculate_abundance_stats().
   abundance_metadata <- data.frame(
     sample = colnames(abundance),
     group_col = Group,
     stringsAsFactors = FALSE
   )
-
-  # Ensure the Group vector length matches the number of samples
-  if (length(Group) != ncol(abundance)) {
-    stop("Length of Group vector (", length(Group), ") does not match number of samples in abundance data (", ncol(abundance), ")")
-  }
 
   abundance_stats <- calculate_abundance_stats(
     abundance = abundance,

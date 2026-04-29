@@ -95,6 +95,7 @@ visualize_gsea <- function(gsea_results,
   validate_dataframe(gsea_results, param_name = "gsea_results")
   validate_choice(plot_type, c("enrichment_plot", "dotplot", "barplot", "network", "heatmap"), "plot_type")
   validate_choice(sort_by, c("NES", "pvalue", "p.adjust"), "sort_by")
+  validate_dataframe(gsea_results, required_cols = sort_by, param_name = "gsea_results")
 
   if (!is.null(colors) && !is.character(colors)) {
     stop("colors must be NULL or a character vector")
@@ -109,23 +110,30 @@ visualize_gsea <- function(gsea_results,
   # Convert to integer if it's not already
   n_pathways <- as.integer(n_pathways)
 
-  # Check if required packages are installed
-  if (plot_type == "enrichment_plot" || plot_type == "dotplot" || plot_type == "barplot") {
-    if (!requireNamespace("enrichplot", quietly = TRUE)) {
-      stop("Package 'enrichplot' is required. Please install it using BiocManager::install('enrichplot').")
-    }
-  }
-
+  # Note: enrichment_plot / dotplot / barplot are built entirely with
+  # ggplot2 (see the branches below); they do not call into enrichplot
+  # at runtime, so we don't require that Bioconductor package here.
+  # Network and heatmap branches still depend on their own stacks and
+  # are checked below.
   if (plot_type == "network") {
-    if (!requireNamespace("igraph", quietly = TRUE) || !requireNamespace("ggraph", quietly = TRUE)) {
-      stop("Packages 'igraph' and 'ggraph' are required for network plots. Please install them.")
-    }
+    require_package("igraph", "network plots")
+    require_package("ggraph", "network plots")
+    require_package("tidygraph", "network plots")
+    validate_dataframe(
+      gsea_results,
+      required_cols = c("pathway_id", "NES", "pvalue", "p.adjust", "size", "leading_edge"),
+      param_name = "gsea_results"
+    )
   }
 
   if (plot_type == "heatmap") {
-    if (!requireNamespace("ComplexHeatmap", quietly = TRUE) || !requireNamespace("circlize", quietly = TRUE)) {
-      stop("Packages 'ComplexHeatmap' and 'circlize' are required for heatmap plots. Please install them.")
-    }
+    require_package("ComplexHeatmap", "heatmap plots")
+    require_package("circlize", "heatmap plots")
+    validate_dataframe(
+      gsea_results,
+      required_cols = c("pathway_id", "NES", "leading_edge"),
+      param_name = "gsea_results"
+    )
 
     # Check if required parameters are provided
     if (is.null(abundance) || is.null(metadata) || is.null(group)) {
@@ -279,7 +287,7 @@ visualize_gsea <- function(gsea_results,
         plot.title = ggplot2::element_text(hjust = 0.5)
       )
 
-  } else if (plot_type == "network") {
+	  } else if (plot_type == "network") {
     # Set default network parameters
     default_params <- list(
       similarity_measure = "jaccard",
@@ -289,8 +297,28 @@ visualize_gsea <- function(gsea_results,
       edge_width_by = "similarity"
     )
 
-    # Merge with user-provided parameters
-    network_params <- utils::modifyList(default_params, network_params)
+	    # Merge with user-provided parameters
+	    network_params <- utils::modifyList(default_params, network_params)
+	    validate_choice(network_params$similarity_measure,
+	                    c("jaccard", "overlap", "correlation"),
+	                    "network_params$similarity_measure")
+	    validate_choice(network_params$layout,
+	                    c("fruchterman", "kamada", "circle"),
+	                    "network_params$layout")
+	    validate_choice(network_params$node_color_by,
+	                    c("NES", "pvalue", "p.adjust"),
+	                    "network_params$node_color_by")
+	    validate_choice(network_params$edge_width_by,
+	                    c("similarity", "constant"),
+	                    "network_params$edge_width_by")
+	    if (!is.numeric(network_params$similarity_cutoff) ||
+	        length(network_params$similarity_cutoff) != 1 ||
+	        is.na(network_params$similarity_cutoff) ||
+	        network_params$similarity_cutoff < 0 ||
+	        network_params$similarity_cutoff > 1) {
+	      stop("network_params$similarity_cutoff must be a single numeric value between 0 and 1",
+	           call. = FALSE)
+	    }
 
     # Create network plot
     p <- create_network_plot(
@@ -313,8 +341,11 @@ visualize_gsea <- function(gsea_results,
       annotation_colors = list(Group = stats::setNames(colors[seq_along(unique(metadata[[group]]))], unique(metadata[[group]])))
     )
 
-    # Merge with user-provided parameters
-    heatmap_params <- utils::modifyList(default_params, heatmap_params)
+	    # Merge with user-provided parameters
+	    heatmap_params <- utils::modifyList(default_params, heatmap_params)
+	    if (is.null(heatmap_params$annotation_colors)) {
+	      heatmap_params$annotation_colors <- default_params$annotation_colors
+	    }
 
     # Create heatmap
     p <- create_heatmap_plot(
@@ -565,12 +596,23 @@ create_network_plot <- function(gsea_results,
     layout_name <- "fr"
   }
 
-  # Create ggraph visualization
-  p <- ggraph::ggraph(tbl_graph, layout = layout_name) +
-    ggraph::geom_edge_link(ggplot2::aes(width = .data$weight, alpha = .data$weight)) +
-    ggraph::geom_node_point(ggplot2::aes(color = .data[[node_color_by]], size = .data$size)) +
-    ggraph::geom_node_text(ggplot2::aes(label = .data$pathway_label), repel = TRUE, size = 3) +
-    ggraph::scale_edge_width(range = c(0.1, 2)) +
+	  edge_layer <- if (edge_width_by == "similarity") {
+	    ggraph::geom_edge_link(ggplot2::aes(width = .data$weight, alpha = .data$weight))
+	  } else {
+	    ggraph::geom_edge_link(ggplot2::aes(alpha = .data$weight), width = 0.5)
+	  }
+	  edge_width_scale <- if (edge_width_by == "similarity") {
+	    ggraph::scale_edge_width(range = c(0.1, 2))
+	  } else {
+	    NULL
+	  }
+
+	  # Create ggraph visualization
+	  p <- ggraph::ggraph(tbl_graph, layout = layout_name) +
+	    edge_layer +
+	    ggraph::geom_node_point(ggplot2::aes(color = .data[[node_color_by]], size = .data$size)) +
+	    ggraph::geom_node_text(ggplot2::aes(label = .data$pathway_label), repel = TRUE, size = 3) +
+	    edge_width_scale +
     ggraph::scale_edge_alpha(range = c(0.1, 0.8)) +
     # apply user-provided diverging scale for node color if available (fallback to default)
     {
@@ -630,6 +672,18 @@ create_heatmap_plot <- function(gsea_results,
     ))
   }
 
+  # Align abundance columns with metadata rows using the package-wide
+  # sample-alignment utility. Previously this branch relied solely on
+  # `rownames(metadata)` to locate samples, which silently broke on the
+  # common case of metadata carrying a `sample_name`/`sample_id` column
+  # with default integer rownames -- the column annotation then came
+  # out as all-NA, diverging from how every other function in the
+  # package matches abundance to metadata.
+  aligned <- align_samples(abundance, metadata, verbose = FALSE)
+  abundance <- as.matrix(aligned$abundance)
+  metadata <- aligned$metadata
+  validate_group(metadata, group, min_groups = 1)
+
   # Create heatmap data matrix
   # For each pathway, calculate the average expression of leading edge genes
   heatmap_data <- matrix(0, nrow = length(leading_edges), ncol = ncol(abundance))
@@ -637,8 +691,6 @@ create_heatmap_plot <- function(gsea_results,
   colnames(heatmap_data) <- colnames(abundance)
 
   for (i in seq_along(leading_edges)) {
-    # Get pathway ID and genes
-    current_pathway_id <- names(leading_edges)[i]
     genes <- leading_edges[[i]]
 
     # Ensure all genes are in abundance data
@@ -650,15 +702,15 @@ create_heatmap_plot <- function(gsea_results,
     }
   }
 
-  # Scale data
+  # Scale data. Constant rows produce NA after t(scale(t(.))); coerce
+  # them to 0 so ComplexHeatmap doesn't crash on clustering.
   heatmap_data_scaled <- t(scale(t(heatmap_data)))
+  heatmap_data_scaled[!is.finite(heatmap_data_scaled)] <- 0
 
-  # Prepare column annotation
+  # Column annotation now derives from the aligned metadata, which is
+  # guaranteed to match `colnames(heatmap_data)` by construction.
   column_annotation <- metadata[[group]]
-  names(column_annotation) <- rownames(metadata)
-
-  # Ensure column annotation matches heatmap columns
-  column_annotation <- column_annotation[colnames(heatmap_data)]
+  names(column_annotation) <- colnames(heatmap_data)
 
   # Create column annotation object
   ha <- ComplexHeatmap::HeatmapAnnotation(

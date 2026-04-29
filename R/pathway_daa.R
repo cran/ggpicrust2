@@ -54,18 +54,28 @@ NULL
 #'        If NULL (default), the first level is used as reference.
 #'
 #' @param include_abundance_stats Logical value indicating whether to include
-#'        abundance statistics (mean relative abundance, standard deviation,
-#'        and log2 fold change) in the output. Default is FALSE for backward
-#'        compatibility.
+#'        abundance statistics (mean relative abundance and standard deviation
+#'        per group) in the output. Default is FALSE. When the selected
+#'        \code{daa_method} already provides a \code{log2_fold_change} column
+#'        (ALDEx2 with effect size, DESeq2, edgeR, limma voom, LinDA, Maaslin2,
+#'        metagenomeSeq), the method-native log2 fold change is preserved and
+#'        the relative-abundance ratio is not recomputed.
 #'
-#' @param include_effect_size Logical value indicating whether to include
-#'        effect size information in the output for ALDEx2 analysis. When TRUE,
-#'        additional columns are added including effect_size, diff_btw,
-#'        log2_fold_change, rab_all, and overlap. Only applicable for two-group
-#'        comparisons with ALDEx2 method. Default is FALSE for backward
-#'        compatibility.
+#' @param include_effect_size Logical value indicating whether to compute
+#'        ALDEx2 effect size information via \code{ALDEx2::aldex.effect()}.
+#'        When TRUE, adds \code{effect_size}, \code{diff_btw},
+#'        \code{log2_fold_change}, \code{rab_all}, and \code{overlap} columns,
+#'        aligning ALDEx2 output with the other DAA methods that return log2
+#'        fold changes by default. Only applicable for two-group comparisons
+#'        with the ALDEx2 method; ignored otherwise. Default is TRUE; set to
+#'        FALSE to skip the extra \code{aldex.effect()} computation.
 #'
 #' @param p.adjust Deprecated. Use \code{p_adjust_method} instead.
+#' @param .pre_aligned Internal logical. Set to TRUE only when the caller has
+#'        already aligned abundance columns and metadata rows in identical
+#'        sample order.
+#' @param .sample_col Internal character. Sample identifier column used when
+#'        \code{.pre_aligned = TRUE}.
 #'
 #' @param ... Additional arguments passed to the specific DAA method
 #'
@@ -84,6 +94,15 @@ NULL
 #'   \item \code{adj_method}: Method used for p-value adjustment
 #' }
 #'
+#' Methods that fit a model on the abundance data (DESeq2, edgeR, limma voom,
+#' LinDA, Maaslin2, metagenomeSeq) return a \code{log2_fold_change} column
+#' computed in the method's own model space. ALDEx2 returns
+#' \code{log2_fold_change} (plus \code{effect_size}, \code{diff_btw},
+#' \code{rab_all}, \code{overlap}) when \code{include_effect_size = TRUE}
+#' (the default), derived from \code{ALDEx2::aldex.effect()} in CLR space.
+#' Lefser returns an \code{lda_score} column instead, which is its native
+#' effect-size metric.
+#'
 #' When \code{include_abundance_stats = TRUE}, the following additional columns
 #' are included:
 #' \itemize{
@@ -93,22 +112,10 @@ NULL
 #'   \item \code{mean_rel_abundance_group2}: Mean relative abundance for group2
 #'   \item \code{sd_rel_abundance_group2}: Standard deviation of relative
 #'         abundance for group2
-#'   \item \code{log2_fold_change}: Log2 fold change (group2/group1)
 #' }
-#'
-#' Some methods may provide additional columns, such as \code{log2_fold_change}
-#' for effect size information.
-#'
-#' When \code{include_effect_size = TRUE} and using ALDEx2 method with two groups,
-#' the following additional effect size columns are included:
-#' \itemize{
-#'   \item \code{effect_size}: ALDEx2 effect size (median of the ratio of between-group
-#'         difference and within-group variance)
-#'   \item \code{diff_btw}: Median difference between groups in CLR space
-#'   \item \code{log2_fold_change}: Log2 fold change (same as diff_btw for ALDEx2)
-#'   \item \code{rab_all}: Median CLR abundance across all samples
-#'   \item \code{overlap}: Proportion of effect size that is 0 or less
-#' }
+#' A \code{log2_fold_change} column from relative abundance is only added when
+#' the DAA method does not already provide one, to avoid conflating model-based
+#' and ratio-based effect sizes.
 #'
 #' @examples
 #' \donttest{
@@ -162,14 +169,18 @@ NULL
 #' subset_results <- pathway_daa(abundance, metadata, "group",
 #'                              select = c("sample1", "sample2", "sample3", "sample4"))
 #'
-#' # Include effect size information for ALDEx2 analysis
-#' aldex2_with_effect <- pathway_daa(abundance, metadata, "group",
-#'                                  daa_method = "ALDEx2",
-#'                                  include_effect_size = TRUE)
+#' # ALDEx2 returns effect size columns by default
+#' # (effect_size, diff_btw, log2_fold_change, rab_all, overlap).
+#' # Ranking by |log2_fold_change| is generally more biologically informative
+#' # than ranking by p-value, especially for large datasets where small effects
+#' # can reach statistical significance without being biologically meaningful.
+#' aldex2_res <- pathway_daa(abundance, metadata, "group", daa_method = "ALDEx2")
+#' head(aldex2_res)
 #'
-#' # The result will include additional columns: effect_size, diff_btw,
-#' # log2_fold_change, rab_all, and overlap
-#' head(aldex2_with_effect)
+#' # Opt out of the extra aldex.effect() computation if only p-values are needed
+#' aldex2_pvals_only <- pathway_daa(abundance, metadata, "group",
+#'                                 daa_method = "ALDEx2",
+#'                                 include_effect_size = FALSE)
 #' }
 #'
 #' @references
@@ -240,8 +251,14 @@ calculate_abundance_stats <- function(abundance, metadata, group, features, grou
     stop("No samples found for group2: ", group2)
   }
 
-  # Convert to relative abundance
-  relative_abundance <- apply(abundance_filtered, 2, function(x) x / sum(x))
+  # Convert to relative abundance via the shared helper so zero-sum sample
+  # columns fail fast here instead of producing NaN that later gets
+  # dropped by `na.rm = TRUE` inside the mean()/sd() aggregations,
+  # silently changing the effective sample size.
+  relative_abundance <- compute_relative_abundance(
+    abundance_filtered,
+    context = "calculate_abundance_stats()"
+  )
 
   # Filter for specified features
   if (!is.null(features)) {
@@ -252,41 +269,42 @@ calculate_abundance_stats <- function(abundance, metadata, group, features, grou
     relative_abundance <- relative_abundance[features_available, , drop = FALSE]
   }
 
-  # Calculate statistics for each feature
-  results <- data.frame(
-    feature = rownames(relative_abundance),
-    mean_rel_abundance_group1 = NA_real_,
-    sd_rel_abundance_group1 = NA_real_,
-    mean_rel_abundance_group2 = NA_real_,
-    sd_rel_abundance_group2 = NA_real_,
-    log2_fold_change = NA_real_,
-    stringsAsFactors = FALSE
+  # Per-feature mean and sd for the two groups of interest. Restrict the
+  # matrix to group1 + group2 columns before aggregation so the helper does
+  # not spend time on samples that wouldn't show up in the output anyway.
+  # This is also the only entry point that computes the mean/sd inputs to
+  # the log2 fold change: `pathway_errorbar()` reuses the same helper, so
+  # any future change to the aggregation rule (e.g. na.rm strategy,
+  # trimmed means, etc.) only needs to happen in one place.
+  keep <- group_assignments %in% c(group1, group2)
+  long_stats <- summarize_abundance_by_group(
+    relative_abundance[, keep, drop = FALSE],
+    group_assignments[keep]
   )
 
-  # Calculate data-driven pseudocount using unified function
+  feature_order <- rownames(relative_abundance)
+  g1 <- long_stats[long_stats$group == group1, , drop = FALSE]
+  g2 <- long_stats[long_stats$group == group2, , drop = FALSE]
+  g1 <- g1[match(feature_order, g1$name), , drop = FALSE]
+  g2 <- g2[match(feature_order, g2$name), , drop = FALSE]
+
+  # Data-driven pseudocount must be computed from the full relative-
+  # abundance matrix (same scope as before the refactor), not from the
+  # per-group means -- otherwise the pseudocount would track fold-change
+  # scale and inflate artificially for small-sample comparisons.
   pseudocount <- calculate_pseudocount(as.vector(relative_abundance))
 
-  for (i in seq_len(nrow(relative_abundance))) {
-    # Get abundance values for each group
-    group1_values <- relative_abundance[i, group1_samples, drop = TRUE]
-    group2_values <- relative_abundance[i, group2_samples, drop = TRUE]
-
-    # Calculate means and standard deviations
-    mean1 <- mean(group1_values, na.rm = TRUE)
-    sd1 <- stats::sd(group1_values, na.rm = TRUE)
-    mean2 <- mean(group2_values, na.rm = TRUE)
-    sd2 <- stats::sd(group2_values, na.rm = TRUE)
-
-    # Calculate log2 fold change using unified function
-    log2_fc <- calculate_log2_fold_change(mean1, mean2, pseudocount = pseudocount)
-
-    # Store results
-    results[i, "mean_rel_abundance_group1"] <- mean1
-    results[i, "sd_rel_abundance_group1"] <- sd1
-    results[i, "mean_rel_abundance_group2"] <- mean2
-    results[i, "sd_rel_abundance_group2"] <- sd2
-    results[i, "log2_fold_change"] <- log2_fc
-  }
+  results <- data.frame(
+    feature = feature_order,
+    mean_rel_abundance_group1 = g1$mean,
+    sd_rel_abundance_group1 = g1$sd,
+    mean_rel_abundance_group2 = g2$mean,
+    sd_rel_abundance_group2 = g2$sd,
+    log2_fold_change = calculate_log2_fold_change(
+      g1$mean, g2$mean, pseudocount = pseudocount
+    ),
+    stringsAsFactors = FALSE
+  )
 
   return(results)
 }
@@ -295,30 +313,105 @@ calculate_abundance_stats <- function(abundance, metadata, group, features, grou
 #' @export
 pathway_daa <- function(abundance, metadata, group, daa_method = "ALDEx2",
                        select = NULL, p_adjust_method = "BH", reference = NULL,
-                       include_abundance_stats = FALSE, include_effect_size = FALSE,
-                       p.adjust = NULL, ...) {
+                       include_abundance_stats = FALSE, include_effect_size = TRUE,
+                       p.adjust = NULL, .pre_aligned = FALSE,
+                       .sample_col = NULL, ...) {
   # Backward compatibility for deprecated parameter
   if (!is.null(p.adjust)) {
     warning("'p.adjust' parameter is deprecated. Use 'p_adjust_method' instead.", call. = FALSE)
     p_adjust_method <- p.adjust
   }
-  # Check required package for DAA method
+
+  # Single source of truth for supported DAA methods: this list drives
+  # validation, the method->package mapping for optional-dependency
+  # loading, and documents what the switch() below will accept.
   method_packages <- list(
     "ALDEx2" = "ALDEx2", "DESeq2" = "DESeq2", "edgeR" = "edgeR",
     "limma voom" = "limma", "metagenomeSeq" = "metagenomeSeq",
+    "LinDA" = "MicrobiomeStat",
     "Maaslin2" = "Maaslin2", "Lefser" = "lefser"
   )
-  if (daa_method %in% names(method_packages)) {
-    require_package(method_packages[[daa_method]], purpose = daa_method)
+
+  # Validate daa_method up front. switch() below has no default, so an
+  # unrecognized value silently yielded NULL; worse, both README and
+  # some internal helpers historically referenced the misspellings
+  # "linDA" and "Lefse", so users copy-pasted invalid values and got
+  # a confusing NULL back. Fail fast with a message that shows the
+  # canonical set.
+  if (length(daa_method) != 1 || !is.character(daa_method) ||
+      is.na(daa_method) || !nzchar(daa_method)) {
+    stop("'daa_method' must be a single non-empty character string. ",
+         "Supported methods: ",
+         paste(names(method_packages), collapse = ", "), ".")
   }
+  if (!daa_method %in% names(method_packages)) {
+    # Common misspellings -> canonical form. Users frequently hit
+    # "linDA" (from older docs) or "Lefse" (the LEfSe upstream name,
+    # but our backend is the Bioconductor "Lefser" package); point
+    # them at the right spelling instead of generic "not supported".
+    suggestion <- switch(
+      tolower(daa_method),
+      "linda" = "LinDA",
+      "lefse" = "Lefser",
+      "aldex" = "ALDEx2",
+      "aldex2" = "ALDEx2",
+      "maaslin"  = "Maaslin2",
+      "maaslin2" = "Maaslin2",
+      "deseq" = "DESeq2",
+      "deseq2" = "DESeq2",
+      NULL
+    )
+    stop(
+      sprintf("Unsupported daa_method: '%s'. ", daa_method),
+      if (!is.null(suggestion)) sprintf("Did you mean '%s'? ", suggestion) else "",
+      "Supported methods: ",
+      paste(names(method_packages), collapse = ", "), "."
+    )
+  }
+
+  require_package(method_packages[[daa_method]], purpose = daa_method)
 
   # Input validation using unified functions
   validate_abundance(abundance, min_samples = 4)
   validate_metadata(metadata)
   validate_group(metadata, group, min_groups = 2)
 
-  # Align samples
-  aligned <- align_samples(abundance, metadata, verbose = FALSE)
+  # Alignment ownership is explicit. Standalone callers use the public
+  # contract and get automatic sample matching here. ggpicrust2() aligns
+  # once at the wrapper boundary because it also needs the same aligned
+  # objects for plotting, then calls this function with `.pre_aligned = TRUE`
+  # so we validate the invariant instead of repeating the alignment.
+  .pre_aligned <- normalize_logical_flag(.pre_aligned, ".pre_aligned")
+  if (.pre_aligned) {
+    if (is.null(colnames(abundance))) {
+      stop("Pre-aligned abundance data must have sample column names.", call. = FALSE)
+    }
+    metadata <- as.data.frame(metadata)
+    sample_col <- .sample_col
+    if (is.null(sample_col) || !sample_col %in% colnames(metadata)) {
+      sample_col <- find_sample_column(metadata, colnames(abundance))
+    }
+    if (is.null(sample_col)) {
+      stop("Pre-aligned metadata must contain sample identifiers matching abundance columns.",
+           call. = FALSE)
+    }
+    if (sample_col == ".rownames") {
+      metadata$.sample_id <- rownames(metadata)
+      sample_col <- ".sample_id"
+    }
+    if (!identical(colnames(abundance), as.character(metadata[[sample_col]]))) {
+      stop("Pre-aligned abundance and metadata are not in the same sample order.",
+           call. = FALSE)
+    }
+    aligned <- list(
+      abundance = abundance,
+      metadata = metadata,
+      sample_col = sample_col,
+      n_samples = ncol(abundance)
+    )
+  } else {
+    aligned <- align_samples(abundance, metadata, verbose = FALSE)
+  }
   abundance <- aligned$abundance
   metadata <- tibble::as_tibble(aligned$metadata)
   sample_col <- aligned$sample_col
@@ -333,7 +426,10 @@ pathway_daa <- function(abundance, metadata, group, daa_method = "ALDEx2",
       stop("Some selected samples not in abundance data")
     }
     abundance <- abundance[, select, drop = FALSE]
-    metadata <- metadata[metadata[[sample_col]] %in% select, ]
+    # Keep metadata rows in the exact order of `select` so row i of metadata
+    # corresponds to column i of abundance. Simple %in% filtering preserves
+    # the original order and can silently desynchronize Group vs samples.
+    metadata <- metadata[match(select, metadata[[sample_col]]), , drop = FALSE]
   }
 
   # Validate abundance matrix
@@ -348,15 +444,30 @@ pathway_daa <- function(abundance, metadata, group, daa_method = "ALDEx2",
   Level <- levels(Group)
   length_Level <- length(Level)
 
+  # Re-validate group counts after align_samples()/select have pruned samples.
+  # The up-front validate_group() check sees the raw metadata, so sample
+  # alignment or a narrow `select =` that removes every row of a level can
+  # leave a single-group dataset that would crash inside the backends with a
+  # less actionable error.
+  if (length_Level < 2) {
+    stop(
+      "DAA requires at least 2 groups with samples after alignment",
+      if (!is.null(select)) " and `select` filtering" else "",
+      "; found ", length_Level,
+      if (length_Level == 1) paste0(" ('", Level, "')") else "",
+      "."
+    )
+  }
+
   # Perform differential analysis
   result <- switch(
     daa_method,
     "ALDEx2" = perform_aldex2_analysis(abundance_mat, Group, Level, length_Level, include_effect_size),
-    "DESeq2" = perform_deseq2_analysis(abundance_mat, metadata, group, Level),
+    "DESeq2" = perform_deseq2_analysis(abundance_mat, metadata, group, reference, Level, length_Level),
     "LinDA" = perform_linda_analysis(abundance, metadata, group, reference, Level, length_Level),
     "limma voom" = perform_limma_voom_analysis(abundance_mat, Group, reference, Level, length_Level),
-    "edgeR" = perform_edger_analysis(abundance_mat, Group, Level, length_Level),
-    "metagenomeSeq" = perform_metagenomeseq_analysis(abundance_mat, metadata, group, Level),
+    "edgeR" = perform_edger_analysis(abundance_mat, Group, reference, Level, length_Level),
+    "metagenomeSeq" = perform_metagenomeseq_analysis(abundance_mat, metadata, group, reference, Level),
     "Maaslin2" = perform_maaslin2_analysis(abundance_mat, metadata, group, reference, Level, length_Level),
     "Lefser" = perform_lefser_analysis(abundance_mat, metadata, group, Level)
   )
@@ -416,8 +527,16 @@ pathway_daa <- function(abundance, metadata, group, daa_method = "ALDEx2",
           }
         }
 
-        # Merge abundance stats with results
+        # Merge abundance stats with results. If the DAA method already
+        # provides a method-native log2_fold_change (e.g. ALDEx2 effect size
+        # in CLR space, DESeq2 shrunk log2FC), keep it and drop the
+        # relative-abundance-ratio version to avoid a .x/.y merge collision
+        # and to avoid conflating two different effect-size definitions.
         if (nrow(all_abundance_stats) > 0) {
+          if ("log2_fold_change" %in% colnames(result) &&
+              "log2_fold_change" %in% colnames(all_abundance_stats)) {
+            all_abundance_stats$log2_fold_change <- NULL
+          }
           result <- merge(
             result,
             all_abundance_stats,
@@ -516,11 +635,9 @@ perform_aldex2_analysis <- function(abundance_mat, Group, Level, length_Level, i
     return(base_df)
     
   } else {
-    # Multi-group analysis
-    if (include_effect_size) {
-      warning("Effect size only available for two-group comparisons")
-    }
-
+    # Multi-group analysis. ALDEx2::aldex.effect() only supports two-group
+    # comparisons, so include_effect_size is silently ignored here regardless
+    # of its value.
     ALDEx2_object <- tryCatch(
       ALDEx2::aldex.clr(abundance_mat, Group, mc.samples = 256, denom = "all", verbose = FALSE),
       error = function(e) stop("ALDEx2 CLR failed: ", e$message)
@@ -548,31 +665,35 @@ perform_aldex2_analysis <- function(abundance_mat, Group, Level, length_Level, i
 }
 
 # Helper function: Perform DESeq2 analysis
-perform_deseq2_analysis <- function(abundance_mat, metadata, group, Level) {
+perform_deseq2_analysis <- function(abundance_mat, metadata, group, reference, Level, length_Level) {
   counts <- round(as.matrix(abundance_mat))
-  
-  # Ensure group column is a factor
-  metadata[[group]] <- factor(metadata[[group]], levels = Level)
-  
+
+  # Resolve the reference level. When the user supplies one we honor it,
+  # otherwise fall back to the first level so behavior stays identical to
+  # the previous default.
+  ref_level <- if (!is.null(reference) && reference %in% Level) reference else Level[1]
+  non_ref_levels <- setdiff(Level, ref_level)
+  factor_levels <- c(ref_level, non_ref_levels)
+
+  # Ensure group column is a factor with reference in the first position so
+  # DESeq2's default contrasts match the semantics expected downstream.
+  metadata[[group]] <- factor(metadata[[group]], levels = factor_levels)
+
   # Create DESeqDataSet object
   se <- SummarizedExperiment::SummarizedExperiment(
     assays = list(counts = counts),
     colData = metadata
   )
-  
-  # Use try-catch to handle possible errors
+
   result <- tryCatch({
     suppressWarnings({
-      # Create DESeqDataSet
       dds <- DESeq2::DESeqDataSet(se, design = as.formula(paste0("~", group)))
 
-      # Run DESeq2 pipeline with improved error handling
       dds <- DESeq2::estimateSizeFactors(dds)
 
-      # Estimate dispersions with fallback chain: parametric → local → mean → gene-wise
-      # Note: fitType choice should NOT be based on sample size (DESeq2 documentation)
-      # parametric is the default and recommended for most cases
-      # DESeq2 automatically falls back to local if parametric fails
+      # Estimate dispersions with fallback chain: parametric -> local -> mean -> gene-wise
+      # Note: fitType choice should NOT be based on sample size (DESeq2 documentation);
+      # parametric is the default and recommended for most cases.
       dds <- tryCatch({
         DESeq2::estimateDispersions(dds, fitType = "parametric")
       }, error = function(e1) {
@@ -582,7 +703,6 @@ perform_deseq2_analysis <- function(abundance_mat, metadata, group, Level) {
           tryCatch({
             DESeq2::estimateDispersions(dds, fitType = "mean")
           }, error = function(e3) {
-            # Last resort: use gene-wise estimates directly
             message("All dispersion fitting methods failed, using gene-wise estimates...")
             dds <- DESeq2::estimateDispersionsGeneEst(dds)
             DESeq2::dispersions(dds) <- SummarizedExperiment::mcols(dds)$dispGeneEst
@@ -593,27 +713,35 @@ perform_deseq2_analysis <- function(abundance_mat, metadata, group, Level) {
 
       dds <- DESeq2::nbinomWaldTest(dds)
 
-      # Extract results
-      res <- DESeq2::results(dds, contrast = c(group, Level[2], Level[1]))
+      # One row-block per non-reference level, identical shape to
+      # edgeR's multi-group output.
+      build_block <- function(lvl) {
+        res <- DESeq2::results(dds, contrast = c(group, lvl, ref_level))
+        data.frame(
+          feature = rownames(abundance_mat),
+          method = "DESeq2",
+          group1 = ref_level,
+          group2 = lvl,
+          p_values = res$pvalue,
+          log2_fold_change = res$log2FoldChange,
+          stringsAsFactors = FALSE
+        )
+      }
 
-      data.frame(
-        feature = rownames(abundance_mat),
-        method = "DESeq2",
-        group1 = Level[1],
-        group2 = Level[2],
-        p_values = res$pvalue,
-        log2_fold_change = res$log2FoldChange,
-        stringsAsFactors = FALSE
-      )
+      if (length_Level == 2) {
+        build_block(non_ref_levels)
+      } else {
+        do.call(rbind, lapply(non_ref_levels, build_block))
+      }
     })
   }, error = function(e) {
     stop("DESeq2 analysis failed: ", e$message)
   })
-  
+
   if (is.null(result)) {
     stop("DESeq2 analysis failed to produce results")
   }
-  
+
   return(result)
 }
 
@@ -650,15 +778,23 @@ perform_limma_voom_analysis <- function(abundance_mat, Group, reference, Level, 
       stringsAsFactors = FALSE
     )
   } else {
-    # Multi-group comparison handling
-    group_levels <- levels(Group)
+    # Multi-group comparison handling.
+    # fit$p.value columns [-1] correspond to levels(Group)[-1] in order
+    # (since Group was releveled so the reference sits first). as.vector()
+    # of that matrix stacks columns head-to-tail: all features for
+    # contrast 1, then all features for contrast 2, etc. group2 must be
+    # repeated *each = n_features* to stay aligned; plain recycling
+    # produces interleaved B,C,B,C labels that scramble the contrast.
+    contrasts <- levels(Group)[-1]
+    n_features <- nrow(abundance_mat)
+    group1_label <- if (!is.null(reference)) reference else levels(Group)[1]
     results <- data.frame(
-      feature = rep(rownames(abundance_mat), length(group_levels) - 1),
+      feature = rep(rownames(abundance_mat), length(contrasts)),
       method = "limma voom",
-      group1 = reference,
-      group2 = group_levels[group_levels != reference],
-      p_values = as.vector(fit$p.value[,-1]),
-      log2_fold_change = as.vector(fit$coefficients[,-1]),
+      group1 = group1_label,
+      group2 = rep(contrasts, each = n_features),
+      p_values = as.vector(fit$p.value[, -1]),
+      log2_fold_change = as.vector(fit$coefficients[, -1]),
       stringsAsFactors = FALSE
     )
   }
@@ -667,7 +803,16 @@ perform_limma_voom_analysis <- function(abundance_mat, Group, reference, Level, 
 }
 
 # Helper function: Perform edgeR analysis
-perform_edger_analysis <- function(abundance_mat, Group, Level, length_Level) {
+perform_edger_analysis <- function(abundance_mat, Group, reference, Level, length_Level) {
+
+  # Resolve the reference level. Without this, edgeR's exactTest() used the
+  # raw factor order (level 1 vs level 2), so the user-supplied `reference`
+  # was silently ignored and the result labels were always `Level[1]` /
+  # `Level[2]` regardless of intent. Relevel once so both the model and the
+  # labels align with the requested contrast direction.
+  ref_level <- if (!is.null(reference) && reference %in% Level) reference else Level[1]
+  Group <- stats::relevel(factor(Group, levels = Level), ref = ref_level)
+  Level <- levels(Group)
 
   # Create DGEList object
   dge <- edgeR::DGEList(counts = round(abundance_mat), group = Group)
@@ -675,7 +820,9 @@ perform_edger_analysis <- function(abundance_mat, Group, Level, length_Level) {
   dge <- edgeR::estimateCommonDisp(dge, verbose = TRUE)
 
   if (length_Level == 2) {
-    # Two-group comparison
+    # Two-group comparison: reference (level 1) vs non-reference (level 2).
+    # exactTest(pair = c(1, 2)) is `log(level2 / level1)`, matching
+    # group1 = ref, group2 = non-ref.
     et <- edgeR::exactTest(dge, pair = c(1, 2))
     results <- data.frame(
       feature = rownames(abundance_mat),
@@ -687,22 +834,24 @@ perform_edger_analysis <- function(abundance_mat, Group, Level, length_Level) {
       stringsAsFactors = FALSE
     )
   } else {
-    # Multi-group comparison
-    results_list <- list()
-    combinations <- utils::combn(seq_along(Level), 2)
-
-    for (i in seq_len(ncol(combinations))) {
-      et <- edgeR::exactTest(dge, pair = combinations[,i])
-      results_list[[i]] <- data.frame(
+    # Multi-group: emit one block per (reference, non-reference) contrast so
+    # the shape matches DESeq2 / limma voom / LinDA / Maaslin2. Previously
+    # we enumerated every pair via combn(), which produced k*(k-1)/2 rows
+    # per feature without any privileged reference -- inconsistent with the
+    # other backends and with the documented `reference` semantics.
+    non_ref_levels <- Level[-1]
+    results_list <- lapply(non_ref_levels, function(lvl) {
+      et <- edgeR::exactTest(dge, pair = c(Level[1], lvl))
+      data.frame(
         feature = rownames(abundance_mat),
         method = "edgeR",
-        group1 = Level[combinations[1,i]],
-        group2 = Level[combinations[2,i]],
+        group1 = Level[1],
+        group2 = lvl,
         p_values = et$table$PValue,
         log2_fold_change = et$table$logFC,
         stringsAsFactors = FALSE
       )
-    }
+    })
     results <- do.call(rbind, results_list)
   }
 
@@ -710,78 +859,134 @@ perform_edger_analysis <- function(abundance_mat, Group, Level, length_Level) {
 }
 
 # Helper function: Perform metagenomeSeq analysis
-perform_metagenomeseq_analysis <- function(abundance_mat, metadata, group, Level) {
+perform_metagenomeseq_analysis <- function(abundance_mat, metadata, group, reference, Level) {
   new_mrexperiment <- getExportedValue("metagenomeSeq", "newMRexperiment")
   cum_norm <- getExportedValue("metagenomeSeq", "cumNorm")
+  cum_norm_stat_fast <- getExportedValue("metagenomeSeq", "cumNormStatFast")
   fit_feature_model <- getExportedValue("metagenomeSeq", "fitFeatureModel")
   mrcoefs <- getExportedValue("metagenomeSeq", "MRcoefs")
 
-  # Convert metadata to data.frame and ensure sample names are correct
+  # Convert metadata to data.frame. align_samples() has already ordered
+  # metadata rows to match abundance_mat columns, so we set rownames from
+  # the (authoritative) abundance column names rather than trusting a
+  # hardcoded "sample" column that may not exist.
   metadata <- as.data.frame(metadata)
-  rownames(metadata) <- metadata$sample
+  rownames(metadata) <- colnames(abundance_mat)
 
-  # Ensure abundance_mat and metadata have consistent sample order
-  abundance_mat <- abundance_mat[, rownames(metadata)]
-
-  # Create phenoData
-  phenoData <- new("AnnotatedDataFrame",
-                   data = metadata,
-                   varMetadata = data.frame(
-                     labelDescription = colnames(metadata),
-                     row.names = colnames(metadata)
-                   ))
-
-  # Ensure data is an integer matrix
-  counts <- round(as.matrix(abundance_mat))
-
-  # Create MRexperiment object
-  obj <- try({
-    new_mrexperiment(
-      counts = counts,
-      phenoData = phenoData,
-      featureData = NULL,
-      libSize = NULL,
-      normFactors = NULL
-    )
-  }, silent = TRUE)
-
-  if (inherits(obj, "try-error")) {
-    stop("Failed to create MRexperiment object: ", attr(obj, "condition")$message)
-  }
-
-  # Normalize
-  obj <- cum_norm(obj)
-
-  # Create model matrix
-  mod <- stats::model.matrix(as.formula(paste0("~", group)), data = metadata)
-
-  # Fit model
-  fit <- fit_feature_model(obj, mod)
-
-  # Extract coefficients using MRcoefs
-  coef_table <- tryCatch({
-    mrcoefs(fit, coef = 2)  # coef = 2 for group effect
-  }, error = function(e) {
-    warning("Failed to extract coefficients from metagenomeSeq: ", e$message)
-    return(NULL)
-  })
-
-  # Extract results
-  results <- data.frame(
-    feature = rownames(abundance_mat),
-    method = "metagenomeSeq",
-    group1 = Level[1],
-    group2 = Level[2],
-    p_values = fit@pvalues,
-    stringsAsFactors = FALSE
+  # Resolve the reference level and relevel the grouping factor so the
+  # ~group model matrix uses the user-specified level as the intercept.
+  # Without this, metagenomeSeq always contrasted against the natural
+  # first level and our group1/group2 labels (Level[1]/Level[2]) were
+  # fixed regardless of the `reference` argument, so flipping the
+  # reference left both labels and coefficients unchanged.
+  ref_level <- if (!is.null(reference) && reference %in% Level) reference else Level[1]
+  metadata[[group]] <- stats::relevel(
+    factor(metadata[[group]], levels = Level),
+    ref = ref_level
   )
+  Level <- levels(metadata[[group]])
 
-  # Add log2_fold_change if coefficients are available
-  if (!is.null(coef_table) && "logFC" %in% colnames(coef_table)) {
-    results$log2_fold_change <- coef_table$logFC
+  counts_all <- round(as.matrix(abundance_mat))
+
+  # Single two-group fit. `fitFeatureModel()` is metagenomeSeq's documented
+  # entry point for two-group comparisons (it tests a single coefficient and
+  # returns one p-value per feature in `fit@pvalues`). For each pairwise
+  # contrast we fit this two-group model on the subset of samples in the
+  # two levels of interest and read `coef = 2` -- the non-reference dummy.
+  # Returns a list of two length-nrow(counts_sub) vectors so the shape is
+  # stable across contrasts regardless of log-fold-change extraction
+  # success.
+  fit_pair <- function(counts_sub, meta_sub, group_col) {
+    phenoData <- new("AnnotatedDataFrame",
+                     data = meta_sub,
+                     varMetadata = data.frame(
+                       labelDescription = colnames(meta_sub),
+                       row.names = colnames(meta_sub)
+                     ))
+    obj <- try(
+      new_mrexperiment(counts = counts_sub, phenoData = phenoData,
+                       featureData = NULL, libSize = NULL, normFactors = NULL),
+      silent = TRUE
+    )
+    if (inherits(obj, "try-error")) {
+      stop("Failed to create MRexperiment object: ",
+           attr(obj, "condition")$message)
+    }
+    # cumNormStatFast() chooses a normalization quantile by comparing
+    # per-sample CDFs; with very small or near-uniform matrices (e.g. the
+    # minimum 4-sample input) the underlying quantile math returns NaN,
+    # and metagenomeSeq then aborts inside an `if (x <= 0.5)` check with
+    # "missing value where TRUE/FALSE needed". Precompute the factor
+    # ourselves and fall back to metagenomeSeq's documented default
+    # (p = 0.5) whenever it is degenerate.
+    p_norm <- tryCatch(cum_norm_stat_fast(obj), error = function(e) NA_real_)
+    if (!is.finite(p_norm)) p_norm <- 0.5
+    obj <- cum_norm(obj, p = p_norm)
+
+    mod <- stats::model.matrix(as.formula(paste0("~", group_col)),
+                               data = meta_sub)
+    fit <- fit_feature_model(obj, mod)
+
+    coef_table <- tryCatch(
+      mrcoefs(fit, coef = 2),
+      error = function(e) {
+        warning("Failed to extract coefficients from metagenomeSeq: ",
+                e$message)
+        NULL
+      }
+    )
+    log2fc <- if (!is.null(coef_table) && "logFC" %in% colnames(coef_table)) {
+      coef_table$logFC
+    } else {
+      rep(NA_real_, nrow(counts_sub))
+    }
+    list(p_values = fit@pvalues, log2_fold_change = log2fc)
   }
 
-  return(results)
+  if (length(Level) == 2) {
+    res <- fit_pair(counts_all, metadata, group)
+    return(data.frame(
+      feature = rownames(abundance_mat),
+      method = "metagenomeSeq",
+      group1 = Level[1],
+      group2 = Level[2],
+      p_values = res$p_values,
+      log2_fold_change = res$log2_fold_change,
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  # Multi-group: emit one (reference, non-reference) contrast block per
+  # non-reference level. Previously the function built a full k-column
+  # model matrix, called fit_feature_model() once, extracted coef = 2,
+  # and hard-coded group1 = Level[1] / group2 = Level[2] -- which
+  # silently dropped all contrasts beyond the first non-reference level
+  # and shaped the output as if only two groups existed. fitFeatureModel
+  # is also documented as a two-group entry point, so re-fitting per pair
+  # on the subset of samples in the two levels of interest is the correct
+  # multi-group handling and matches the shape returned by edgeR / LinDA
+  # / Maaslin2 / DESeq2 / limma voom.
+  non_ref_levels <- Level[-1]
+  results_list <- lapply(non_ref_levels, function(lvl) {
+    keep <- metadata[[group]] %in% c(Level[1], lvl)
+    meta_sub <- metadata[keep, , drop = FALSE]
+    # Relevel within the subset so the 2-column model matrix has the
+    # reference level first and the current non-reference level second.
+    meta_sub[[group]] <- factor(as.character(meta_sub[[group]]),
+                                levels = c(Level[1], lvl))
+    counts_sub <- counts_all[, keep, drop = FALSE]
+    res <- fit_pair(counts_sub, meta_sub, group)
+    data.frame(
+      feature = rownames(abundance_mat),
+      method = "metagenomeSeq",
+      group1 = Level[1],
+      group2 = lvl,
+      p_values = res$p_values,
+      log2_fold_change = res$log2_fold_change,
+      stringsAsFactors = FALSE
+    )
+  })
+  do.call(rbind, results_list)
 }
 
 # Helper function: Perform Maaslin2 analysis
@@ -802,6 +1007,27 @@ perform_maaslin2_analysis <- function(abundance_mat, metadata, group, reference,
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
   on.exit(unlink(output_dir, recursive = TRUE, force = TRUE), add = TRUE)
 
+  # Maaslin2 emits an early logging::logwarn() before it sets up its own
+  # log handler. If a prior Maaslin2 invocation in the same R session left
+  # a writeToFile handler pointing at a now-deleted directory, that early
+  # warning blows up with "cannot open the connection". Clear stale
+  # handlers up front so repeat calls stay safe.
+  if (requireNamespace("logging", quietly = TRUE)) {
+    root_logger <- logging::getLogger()
+    for (h_name in names(root_logger$handlers)) {
+      try(logging::removeHandler(h_name), silent = TRUE)
+    }
+  }
+
+  # Resolve the reference level up front so we can (a) pass it to Maaslin2
+  # regardless of group count and (b) label group1 consistently. Without
+  # forwarding reference in the 2-group case, Maaslin2 falls back to its
+  # alphabetical-first-level default -- if the user asked for a different
+  # reference, the resulting contrast direction silently disagrees with the
+  # group1/group2 labels we emit.
+  ref_level <- if (!is.null(reference) && reference %in% Level) reference else Level[1]
+  maaslin_reference <- paste0(group, ",", ref_level)
+
   # Run Maaslin2 analysis via dynamic lookup so the package remains optional
   maaslin2_fn <- getExportedValue("Maaslin2", "Maaslin2")
   fit_data <- maaslin2_fn(
@@ -810,7 +1036,7 @@ perform_maaslin2_analysis <- function(abundance_mat, metadata, group, reference,
     output = output_dir,
     transform = "AST",
     fixed_effects = group,
-    reference = if (length_Level > 2) paste0(group, ",", reference) else NULL,
+    reference = maaslin_reference,
     normalization = "TSS",
     standardize = TRUE,
     min_prevalence = 0.1,
@@ -822,44 +1048,41 @@ perform_maaslin2_analysis <- function(abundance_mat, metadata, group, reference,
   # Read all results instead of significant results
   results_file <- file.path(output_dir, "all_results.tsv")
 
-  if (file.exists(results_file)) {
-    maaslin2_results <- utils::read.table(results_file,
+  if (!file.exists(results_file)) {
+    stop("Maaslin2 analysis failed to produce results file")
+  }
+
+  maaslin2_results <- utils::read.table(results_file,
                                         header = TRUE,
                                         sep = "\t",
                                         stringsAsFactors = FALSE)
 
-    # Format results
-    # Note: Maaslin2 replaces hyphens (-) with dots (.) in feature names
-    # We need to match features more intelligently
+  # Keep only rows that correspond to contrasts on `group`. Maaslin2 emits
+  # one row per (feature, non-reference level) for a categorical fixed effect,
+  # which gives us the multi-group shape natively: N_features rows in the
+  # 2-group case, N_features * (k - 1) in a k-group case.
+  maaslin2_results <- maaslin2_results[maaslin2_results$metadata == group, , drop = FALSE]
 
-    # Create a mapping between original and Maaslin2 feature names
-    original_features <- rownames(abundance_mat)
-    maaslin2_features <- maaslin2_results$feature
+  # Maaslin2 replaces hyphens (-) with dots (.) in feature names, so we
+  # translate Maaslin2's feature column back to the original IDs rather
+  # than trying to match original IDs into Maaslin2 output (which loses
+  # multi-group rows via match()'s first-hit semantics).
+  original_features <- rownames(abundance_mat)
+  translated_features <- original_features[match(maaslin2_results$feature,
+                                                 gsub("-", ".", original_features))]
+  # Fall back to the raw Maaslin2 name if the reverse map missed.
+  translated_features[is.na(translated_features)] <-
+    maaslin2_results$feature[is.na(translated_features)]
 
-    # Try direct matching first
-    matches <- match(original_features, maaslin2_features)
-
-    # For unmatched features, try with hyphen-to-dot conversion
-    unmatched_indices <- which(is.na(matches))
-    if (length(unmatched_indices) > 0) {
-      # Convert hyphens to dots in original feature names for matching
-      original_with_dots <- gsub("-", ".", original_features[unmatched_indices])
-      dot_matches <- match(original_with_dots, maaslin2_features)
-      matches[unmatched_indices] <- dot_matches
-    }
-
-    results <- data.frame(
-      feature = rownames(abundance_mat),
-      method = "Maaslin2",
-      group1 = if (length_Level == 2) Level[1] else reference,
-      group2 = if (length_Level == 2) Level[2] else Level[Level != reference],
-      p_values = maaslin2_results$pval[matches],
-      log2_fold_change = maaslin2_results$coef[matches],
-      stringsAsFactors = FALSE
-    )
-  } else {
-    stop("Maaslin2 analysis failed to produce results file")
-  }
+  results <- data.frame(
+    feature = translated_features,
+    method = "Maaslin2",
+    group1 = ref_level,
+    group2 = maaslin2_results$value,
+    p_values = maaslin2_results$pval,
+    log2_fold_change = maaslin2_results$coef,
+    stringsAsFactors = FALSE
+  )
 
   return(results)
 }
@@ -1014,11 +1237,6 @@ perform_linda_analysis <- function(abundance, metadata, group, reference, Level,
   feature.dat <- validate_daa_input(as.matrix(abundance), method = "LinDA", filter_zero = TRUE)
   meta.dat <- metadata
 
-  # Ensure group is factor
-  if (!is.factor(meta.dat[[group]])) {
-    meta.dat[[group]] <- factor(meta.dat[[group]])
-  }
-
   # Handle reference level
   if (!is.null(reference) && !(reference %in% Level)) {
     warning(sprintf("Reference '%s' not in group levels; using '%s'", reference, Level[1]))
@@ -1026,6 +1244,19 @@ perform_linda_analysis <- function(abundance, metadata, group, reference, Level,
   } else if (is.null(reference)) {
     reference <- Level[1]
   }
+
+  # Relevel the grouping factor so that LinDA's `~ group` formula actually
+  # treats the user-specified level as the reference. Without this, LinDA
+  # silently keeps the natural first level as reference while our result
+  # labeling uses `reference` -- producing rows with group1 == group2 and
+  # statistics that don't reflect the requested contrast direction.
+  meta.dat[[group]] <- stats::relevel(
+    factor(meta.dat[[group]], levels = Level),
+    ref = reference
+  )
+  # Keep Level in sync with the releveled factor so downstream lookups
+  # (e.g. non-reference level enumeration) agree with the model fit.
+  Level <- levels(meta.dat[[group]])
 
   formula <- paste0("~ ", group)
 

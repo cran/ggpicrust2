@@ -39,8 +39,7 @@
 #' @param pathway_class_position A character string specifying pathway class position. Options: "left", "right", "none". Default is "left".
 #' @param pathway_names_text_size A numeric value or "auto" for pathway names (y-axis labels) text size. Default is "auto".
 #' @importFrom stats sd
-#' @return A ggplot2 plot showing the error bar plot of the differential abundance analysis results for the functional pathways.
-#' The plot visualizes the differential abundance results of a specific differential abundance analysis method. The corresponding dataframe contains the results used to create the plot.
+#' @return A ggplot2 (patchwork) plot showing the error bar plot of the differential abundance analysis results for the functional pathways.
 #' @export
 #'
 #' @examples
@@ -150,7 +149,7 @@
 #'   log2_fold_change_color = "#006400" # Dark green for log2 fold change bars
 #' )
 #' }
-utils::globalVariables(c("group", "name", "value", "feature", "negative_log10_p", "group_nonsense", "nonsense", "pathway_class", "p_adjust", "log2_fold_change", "transform_sample_counts", "column_to_rownames", "txtProgressBar", "setTxtProgressBar", "utils"))
+utils::globalVariables(c("group", "name", "value", "feature", "negative_log10_p", "pathway_class", "p_adjust", "log2_fold_change", "transform_sample_counts", "column_to_rownames", "txtProgressBar", "setTxtProgressBar", "utils"))
 pathway_errorbar <-
   function(abundance,
            daa_results_df,
@@ -191,10 +190,17 @@ pathway_errorbar <-
            pathway_class_text_face = "bold",
            pathway_class_text_angle = 0,
            pathway_class_position = "right",
-           # Pathway names text size parameter
-           pathway_names_text_size = "auto") {
-    # Input validation using unified functions
-    validate_abundance(abundance)
+	           # Pathway names text size parameter
+	           pathway_names_text_size = "auto") {
+    ko_to_kegg <- normalize_logical_flag(ko_to_kegg, "ko_to_kegg")
+    p_value_bar <- normalize_logical_flag(p_value_bar, "p_value_bar")
+    smart_colors <- normalize_logical_flag(smart_colors, "smart_colors")
+    accessibility_mode <- normalize_logical_flag(accessibility_mode, "accessibility_mode")
+    pvalue_stars <- normalize_logical_flag(pvalue_stars, "pvalue_stars")
+    pvalue_colors <- normalize_logical_flag(pvalue_colors, "pvalue_colors")
+
+	    # Input validation using unified functions
+	    validate_abundance(abundance)
     validate_dataframe(daa_results_df,
                        required_cols = c("feature", "method", "group1", "group2", "p_adjust"),
                        param_name = "daa_results_df")
@@ -230,10 +236,10 @@ pathway_errorbar <-
 
     # Set x_lab if not provided
     if (is.null(x_lab)){
-      if (ko_to_kegg == TRUE){
-        x_lab <- "pathway_name"
-      }else{
-        x_lab <- "description"
+	      if (ko_to_kegg) {
+	        x_lab <- "pathway_name"
+	      }else{
+	        x_lab <- "description"
       }
 
       if (is.null(daa_results_df$pathway_name) && is.null(daa_results_df$description)){
@@ -328,14 +334,18 @@ pathway_errorbar <-
         "For possible solutions, please check the FAQ section of the tutorial."
       )
     }
-    # Convert to relative abundance
-    relative_abundance_mat <- apply(t(errorbar_abundance_mat), 1, function(x)
-      x / sum(x))
+    # Convert to relative abundance via the shared helper. This keeps
+    # the normalization identical to calculate_abundance_stats() and
+    # rejects zero-sum sample columns up front, instead of silently
+    # propagating NaN into the plotted error bars.
+    relative_abundance_mat <- compute_relative_abundance(
+      errorbar_abundance_mat,
+      context = "pathway_errorbar()"
+    )
 
     # Subset to only include the features present in daa_results_filtered_sub_df$feature
     sub_relative_abundance_mat <- relative_abundance_mat[rownames(relative_abundance_mat) %in% daa_results_filtered_sub_df$feature, , drop = FALSE]
 
-    # Create a matrix for the error bars
     # Create a mapping from sample names to groups.
     # Prefer names(Group) when available to avoid order-dependent mismatches.
     if (!is.null(names(Group)) &&
@@ -345,7 +355,7 @@ pathway_errorbar <-
     } else {
       sample_to_group_map <- stats::setNames(as.character(Group), colnames(abundance))
     }
-    
+
     # Get groups for the current abundance columns.
     correct_groups <- sample_to_group_map[colnames(sub_relative_abundance_mat)]
     if (any(is.na(correct_groups))) {
@@ -358,45 +368,28 @@ pathway_errorbar <-
         "or provide names(Group) matching sample IDs."
       )
     }
-    
-    # Create the error bar matrix using the correctly mapped groups
-    error_bar_matrix <- cbind(
-      sample = colnames(sub_relative_abundance_mat),
-      group = correct_groups,
-      t(sub_relative_abundance_mat)
-    )
-    error_bar_df <- as.data.frame(error_bar_matrix)
 
-    # Fix for duplicate factor levels issue
+    # Per-feature, per-group mean and sd. Route through the shared helper
+    # instead of the older pivot_longer + group_by(...) + summarise(...)
+    # path that used to live here. That hand-rolled aggregation diverged
+    # from pathway_errorbar_table()'s path on NA handling (it did not set
+    # `na.rm = TRUE`), so the same abundance matrix could yield different
+    # bar heights in the plot vs the table. Using summarize_abundance_by_group()
+    # makes the mean/sd a single source of truth across the package.
     Group_levels <- unique(as.character(Group))
-    error_bar_df$group <- factor(correct_groups, levels = Group_levels)
-
-      error_bar_pivot_longer_df <- tidyr::pivot_longer(error_bar_df,-c(sample, group))
-
-    error_bar_pivot_longer_tibble <-
-      mutate(error_bar_pivot_longer_df, group = as.factor(group))
-
-    error_bar_pivot_longer_tibble$sample <-
-      factor(error_bar_pivot_longer_tibble$sample)
-
-    error_bar_pivot_longer_tibble$name <-
-      factor(error_bar_pivot_longer_tibble$name)
-
-    error_bar_pivot_longer_tibble$value <-
-      as.numeric(error_bar_pivot_longer_tibble$value)
-
     error_bar_pivot_longer_tibble_summarised <-
-      error_bar_pivot_longer_tibble %>% group_by(name, group) %>%
-      summarise(mean = mean(value), sd = stats::sd(value))
-
-    error_bar_pivot_longer_tibble_summarised <-
-      error_bar_pivot_longer_tibble_summarised %>% mutate(group2 = "nonsense")
+      summarize_abundance_by_group(sub_relative_abundance_mat, correct_groups)
+    error_bar_pivot_longer_tibble_summarised$name <-
+      factor(error_bar_pivot_longer_tibble_summarised$name,
+             levels = rownames(sub_relative_abundance_mat))
+    error_bar_pivot_longer_tibble_summarised$group <-
+      factor(error_bar_pivot_longer_tibble_summarised$group, levels = Group_levels)
 
     # When ko_to_kegg = TRUE, validate pathway_class column exists
     # This is required for proper alignment of pathway class annotations
-    if (ko_to_kegg == TRUE && !"pathway_class" %in% colnames(daa_results_filtered_sub_df)) {
-      stop(
-        "The 'pathway_class' column is missing but ko_to_kegg = TRUE. ",
+	    if (ko_to_kegg && !"pathway_class" %in% colnames(daa_results_filtered_sub_df)) {
+	      stop(
+	        "The 'pathway_class' column is missing but ko_to_kegg = TRUE. ",
         "Please use pathway_annotation(..., ko_to_kegg = TRUE) to annotate the data, ",
         "or set ko_to_kegg = FALSE if you don't need pathway class annotations."
       )
@@ -405,7 +398,7 @@ pathway_errorbar <-
     switch(
       order,
       "p_values" = {
-        if (ko_to_kegg == TRUE) {
+	        if (ko_to_kegg) {
           # Nested sorting: first by pathway_class, then by p_adjust within each class
           # This ensures pathway class color blocks align correctly
           order <- order(
@@ -417,7 +410,7 @@ pathway_errorbar <-
         }
       },
       "name" = {
-        if (ko_to_kegg == TRUE) {
+	        if (ko_to_kegg) {
           # Nested sorting: first by pathway_class, then by feature name within each class
           order <- order(
             daa_results_filtered_sub_df$pathway_class,
@@ -428,21 +421,25 @@ pathway_errorbar <-
         }
       },
       "group" = {
-        # Initialize pro column with default value 1
-        daa_results_filtered_sub_df$pro <- 1
+	        # Track the group with the highest mean abundance per feature.
+	        # Ties are resolved by the original group-level order so ordering is
+	        # deterministic and assigns exactly one group per feature.
+	        daa_results_filtered_sub_df$pro <- NA_character_
 
-        for (i in levels(error_bar_pivot_longer_tibble_summarised$name)) {
+	        for (i in levels(error_bar_pivot_longer_tibble_summarised$name)) {
           # Get subset for current feature
           error_bar_pivot_longer_tibble_summarised_sub <-
             error_bar_pivot_longer_tibble_summarised[error_bar_pivot_longer_tibble_summarised$name == i,]
 
           # Find group with maximum mean abundance
-          pro_group <-
-            error_bar_pivot_longer_tibble_summarised_sub[error_bar_pivot_longer_tibble_summarised_sub$mean ==
-                                                            max(error_bar_pivot_longer_tibble_summarised_sub$mean),]$group
-          pro_group <- as.vector(pro_group)
+	          group_means <- stats::setNames(
+	            error_bar_pivot_longer_tibble_summarised_sub$mean,
+	            as.character(error_bar_pivot_longer_tibble_summarised_sub$group)
+	          )
+	          tied_groups <- names(group_means)[group_means == max(group_means, na.rm = TRUE)]
+	          pro_group <- Group_levels[Group_levels %in% tied_groups][1]
 
-          # Find indices of rows matching the current feature, excluding NA values
+	          # Find indices of rows matching the current feature, excluding NA values
           idx <- which(daa_results_filtered_sub_df$feature == i & !is.na(daa_results_filtered_sub_df$feature))
 
           # Only assign values if valid indices exist
@@ -451,19 +448,19 @@ pathway_errorbar <-
           }
         }
 
-        if (ko_to_kegg == TRUE) {
+	        if (ko_to_kegg) {
           # Nested sorting: first by pathway_class, then by group and p_adjust within each class
           order <- order(
             daa_results_filtered_sub_df$pathway_class,
-            daa_results_filtered_sub_df$pro,
-            daa_results_filtered_sub_df$p_adjust
-          )
-        } else {
-          # Order by group and p-value
-          order <-
-            order(daa_results_filtered_sub_df$pro,
-                  daa_results_filtered_sub_df$p_adjust)
-        }
+	            factor(daa_results_filtered_sub_df$pro, levels = Group_levels),
+	            daa_results_filtered_sub_df$p_adjust
+	          )
+	        } else {
+	          # Order by group and p-value
+	          order <-
+	            order(factor(daa_results_filtered_sub_df$pro, levels = Group_levels),
+	                  daa_results_filtered_sub_df$p_adjust)
+	        }
       },
       "pathway_class" = {
         if (!"pathway_class" %in% colnames(daa_results_filtered_sub_df)) {
@@ -495,7 +492,7 @@ pathway_errorbar <-
       error_bar_pivot_longer_tibble_summarised[order(error_bar_pivot_longer_tibble_summarised$feature_order), ]
     error_bar_pivot_longer_tibble_summarised_ordered$feature_order <- NULL
 
-    if (ko_to_kegg == FALSE) {
+	    if (!ko_to_kegg) {
       # Match by feature name using the match function
       matched_indices <- match(
         error_bar_pivot_longer_tibble_summarised_ordered$name,
@@ -505,7 +502,7 @@ pathway_errorbar <-
         daa_results_filtered_sub_df[matched_indices, x_lab]
     }
 
-    if (ko_to_kegg == TRUE) {
+	    if (ko_to_kegg) {
       error_bar_pivot_longer_tibble_summarised_ordered$pathway_class <-
         rep(daa_results_filtered_sub_df$pathway_class,
             each = length(levels(
@@ -609,7 +606,7 @@ pathway_errorbar <-
         plot.margin = ggplot2::unit(c(1, 1, 1, 1), "cm")
       )
 
-    if (ko_to_kegg == TRUE) {
+	    if (ko_to_kegg) {
       # Convert table to matrix to preserve names as rownames
       pathway_class_table <- table(daa_results_filtered_sub_df$pathway_class)
       pathway_class_group_mat <- as.data.frame(as.matrix(pathway_class_table))
@@ -649,54 +646,81 @@ pathway_errorbar <-
       }
     }
     # Add necessary columns
-    daa_results_filtered_sub_df$negative_log10_p <- -log10(daa_results_filtered_sub_df$p_adjust)
-    daa_results_filtered_sub_df$group_nonsense <- "nonsense"
-    
-    # Only add log2_fold_change if it doesn't exist
+	    if (any(daa_results_filtered_sub_df$p_adjust < 0, na.rm = TRUE)) {
+	      stop("p_adjust values must be non-negative.", call. = FALSE)
+	    }
+	    daa_results_filtered_sub_df$negative_log10_p <-
+	      -log10(pmax(daa_results_filtered_sub_df$p_adjust, .Machine$double.xmin))
+
+    # Compute the log2 fold change displayed in the side panel.
+    #
+    # When the DAA method already supplied a `log2_fold_change` column --
+    # DESeq2, edgeR, limma voom, LinDA, Maaslin2, metagenomeSeq, and
+    # ALDEx2 with `include_effect_size = TRUE` -- we MUST preserve it.
+    # The effect size printed as a bar here and the p_adjust driving the
+    # significance panel next to it are two outputs of the same model
+    # fit; replacing the bar with a relative-abundance mean ratio while
+    # the p-value still comes from the model produces a figure where the
+    # two panels tell different stories about the same feature. The
+    # previous implementation added the column defensively as NA only
+    # when missing, then unconditionally overwrote every row with a
+    # mean-ratio calculation -- so e.g. `log2_fold_change = 99` went in
+    # and a number computed from relative abundances came out, silently.
+    #
+    # The mean-ratio pathway is still the right fallback for methods
+    # that do not estimate effect sizes (ALDEx2 with
+    # `include_effect_size = FALSE`, Lefser, or user-supplied DAA
+    # results without a log2_fold_change column). We only run it in that
+    # case.
     if (!"log2_fold_change" %in% colnames(daa_results_filtered_sub_df)) {
-      daa_results_filtered_sub_df$log2_fold_change <- rep(NA, nrow(daa_results_filtered_sub_df))
-    }
+      daa_results_filtered_sub_df$log2_fold_change <- NA_real_
 
-    # Calculate pseudocount once using all mean values for consistency
-    all_means <- error_bar_pivot_longer_tibble_summarised_ordered$mean
-    pseudocount <- calculate_pseudocount(all_means)
+      # Calculate pseudocount once using all mean values for consistency
+      all_means <- error_bar_pivot_longer_tibble_summarised_ordered$mean
+      pseudocount <- calculate_pseudocount(all_means)
 
-    for (i in daa_results_filtered_sub_df$feature){
-      # Get mean values for this feature
-      feature_means <- error_bar_pivot_longer_tibble_summarised_ordered[error_bar_pivot_longer_tibble_summarised_ordered$name %in% i,]
+      for (i in daa_results_filtered_sub_df$feature){
+        # Get mean values for this feature
+        feature_means <- error_bar_pivot_longer_tibble_summarised_ordered[error_bar_pivot_longer_tibble_summarised_ordered$name %in% i,]
 
-      # Get group1 and group2 names for this feature from DAA results
-      feature_row <- daa_results_filtered_sub_df[daa_results_filtered_sub_df$feature == i, ]
-      group1_name <- feature_row$group1[1]
-      group2_name <- feature_row$group2[1]
+        # Get group1 and group2 names for this feature from DAA results
+        feature_row <- daa_results_filtered_sub_df[daa_results_filtered_sub_df$feature == i, ]
+        group1_name <- feature_row$group1[1]
+        group2_name <- feature_row$group2[1]
 
-      # Get mean values for each group in the correct order
-      mean_group1 <- feature_means[feature_means$group == group1_name, ]$mean
-      mean_group2 <- feature_means[feature_means$group == group2_name, ]$mean
+        # Get mean values for each group in the correct order
+        mean_group1 <- feature_means[feature_means$group == group1_name, ]$mean
+        mean_group2 <- feature_means[feature_means$group == group2_name, ]$mean
 
-      # Calculate log2 fold change using unified function
-      if (length(mean_group1) > 0 && length(mean_group2) > 0) {
-        log2_fc <- calculate_log2_fold_change(mean_group1, mean_group2, pseudocount = pseudocount)
-        daa_results_filtered_sub_df[daa_results_filtered_sub_df$feature==i,]$log2_fold_change <- log2_fc
-      } else {
-        # Fallback using unified function with auto-calculated pseudocount
-        mean_vals <- feature_means$mean
-        if (length(mean_vals) >= 2) {
-          log2_fc <- calculate_log2_fold_change(mean_vals[1], mean_vals[2])
+        # Calculate log2 fold change using unified function
+        if (length(mean_group1) > 0 && length(mean_group2) > 0) {
+          log2_fc <- calculate_log2_fold_change(mean_group1, mean_group2, pseudocount = pseudocount)
           daa_results_filtered_sub_df[daa_results_filtered_sub_df$feature==i,]$log2_fold_change <- log2_fc
+        } else {
+          # Fallback using unified function with auto-calculated pseudocount
+          mean_vals <- feature_means$mean
+          if (length(mean_vals) >= 2) {
+            log2_fc <- calculate_log2_fold_change(mean_vals[1], mean_vals[2])
+            daa_results_filtered_sub_df[daa_results_filtered_sub_df$feature==i,]$log2_fold_change <- log2_fc
+          }
         }
       }
     }
     daa_results_filtered_sub_df$feature <- factor(daa_results_filtered_sub_df$feature,levels = rev(daa_results_filtered_sub_df$feature))
+    # This panel plots a single log2 fold change bar per feature. There is
+    # no grouping to map to `fill`, so the color is set directly on
+    # geom_bar() instead of routing through a one-level fill scale with a
+    # dummy constant column. The old code used `aes(fill = group_nonsense)`
+    # + `scale_fill_manual(values = log2_fold_change_color)` to accomplish
+    # the same visual result via an extra indirection.
     p_values_bar <- daa_results_filtered_sub_df %>%
-      ggplot2::ggplot(ggplot2::aes(feature, log2_fold_change, fill = group_nonsense)) +
+      ggplot2::ggplot(ggplot2::aes(feature, log2_fold_change)) +
       ggplot2::geom_bar(stat = "identity",
                position = ggplot2::position_dodge(width = 0.8),
-               width = 0.8) +
+               width = 0.8,
+               fill = log2_fold_change_color) +
       ggplot2::labs(y = "log2 fold change", x = NULL) +
       GGally::geom_stripped_cols() +
-      ggplot2::scale_fill_manual(values = log2_fold_change_color) +
-      ggplot2::scale_color_manual(values = log2_fold_change_color) +
       ggplot2::geom_hline(ggplot2::aes(yintercept = 0),
                  linetype = 'dashed',
                  color = 'black') +
@@ -721,32 +745,28 @@ pathway_errorbar <-
           color = "black",
           hjust = 0.5
         ),
-        legend.position = "non"
+        legend.position = "none"
       ) +
       ggplot2::coord_flip()
 
-    if (ko_to_kegg == TRUE) {
+	    if (ko_to_kegg) {
       # Calculate label y-position as the center of each rectangle
       # The -0.5 offset was causing misalignment (see demos/alignment_debug_analysis.R)
       pathway_class_y <- (ymax + ymin) / 2
-      pathway_class_plot_df <-
-        as.data.frame(
-          cbind(
-            nonsense = "nonsense",
-            pathway_class_y = pathway_class_y,
-            pathway_class = rev(unique(
-              daa_results_filtered_sub_df$pathway_class
-            ))
-          )
-        )
-      pathway_class_plot_df$pathway_class_y <-
-        as.numeric(pathway_class_plot_df$pathway_class_y)
+      # This side-panel draws pathway-class labels aligned to the main plot.
+      # All labels share the same x, so we set `x = ""` directly in aes()
+      # instead of padding the data frame with a constant dummy column.
+      pathway_class_plot_df <- data.frame(
+        pathway_class_y = as.numeric(pathway_class_y),
+        pathway_class = rev(unique(daa_results_filtered_sub_df$pathway_class)),
+        stringsAsFactors = FALSE
+      )
       # Number of features for y-axis limits
       n_features <- nrow(daa_results_filtered_sub_df)
 
       pathway_class_annotation <-
-        pathway_class_plot_df %>% ggplot2::ggplot(ggplot2::aes(nonsense, pathway_class_y)) + ggplot2::geom_text(
-          ggplot2::aes(nonsense, pathway_class_y, label = pathway_class),
+        pathway_class_plot_df %>% ggplot2::ggplot(ggplot2::aes(x = "", y = pathway_class_y)) + ggplot2::geom_text(
+          ggplot2::aes(label = pathway_class),
           size = pathway_class_final_text_size,
           color = pathway_class_final_text_color,
           fontface = pathway_class_text_face,
@@ -775,7 +795,7 @@ pathway_errorbar <-
           },
           axis.title.y =  ggplot2::element_blank(),
           axis.title.x = ggplot2::element_blank(),
-          legend.position = "non"
+          legend.position = "none"
         ) +
         ggplot2::coord_cartesian(clip = "off")
     }
@@ -816,10 +836,13 @@ pathway_errorbar <-
 
     daa_results_filtered_sub_df$unique <-
       nrow(daa_results_filtered_sub_df) - seq_len(nrow(daa_results_filtered_sub_df)) + 1
+    # All p-value labels share a single x anchor (this panel is a vertical
+    # strip), so we set `x = ""` in aes() instead of adding a constant
+    # dummy column just to have a variable name to map.
     p_annotation <- daa_results_filtered_sub_df %>%
-      ggplot2::ggplot(ggplot2::aes(group_nonsense, p_adjust)) +
+      ggplot2::ggplot(ggplot2::aes(x = "", y = p_adjust)) +
       ggplot2::geom_text(
-        ggplot2::aes(group_nonsense, unique, 
+        ggplot2::aes(x = "", y = unique,
                     label = format_p_value(p_adjust),
                     color = I(pvalue_text_colors)),
         size = pvalue_text_size,
@@ -844,10 +867,10 @@ pathway_errorbar <-
           vjust = 0
         ),
         axis.title.x = ggplot2::element_blank(),
-        legend.position = "non"
+        legend.position = "none"
       )
-    if (p_value_bar == TRUE) {
-      if (ko_to_kegg == TRUE) {
+	    if (p_value_bar) {
+	      if (ko_to_kegg) {
         combination_bar_plot <-
           pathway_class_annotation + bar_errorbar + p_values_bar + p_annotation + patchwork::plot_layout(ncol = 4, widths =
                                                                                                 c(2.5, 2.0, 0.7, 0.3))
@@ -857,7 +880,7 @@ pathway_errorbar <-
           bar_errorbar + p_values_bar + p_annotation + patchwork::plot_layout(ncol = 3, widths = c(2.3, 0.7, 0.3))
       }
     }else{
-      if (ko_to_kegg == TRUE) {
+	      if (ko_to_kegg) {
         combination_bar_plot <-
           pathway_class_annotation + bar_errorbar + p_annotation + patchwork::plot_layout(ncol = 3, widths =
                                                                                                            c(2.5, 2.0, 0.3))

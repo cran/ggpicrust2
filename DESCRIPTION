@@ -1,7 +1,7 @@
 Package: ggpicrust2
 Type: Package
 Title: Make 'PICRUSt2' Output Analysis and Visualization Easier
-Version: 2.5.12
+Version: 2.5.14
 Author: Chen Yang [aut, cre],
   Liangliang Zhang [aut]
 Maintainer: Chen Yang <cafferychen7850@gmail.com>
@@ -23,12 +23,13 @@ Depends: R (>= 3.5.0)
 Suggests: Biobase, ggdendro, KEGGREST, ComplexHeatmap, BiocGenerics,
         knitr, rmarkdown, testthat (>= 3.0.0), ALDEx2, DESeq2, edgeR,
         GGally, limma, MicrobiomeStat, SummarizedExperiment, circlize,
-        lefser, fgsea, clusterProfiler, enrichplot, DOSE,
-        ggVennDiagram, UpSetR, igraph, ggridges, ggrepel
+        lefser, Maaslin2, metagenomeSeq, fgsea, clusterProfiler,
+        enrichplot, DOSE, ggVennDiagram, UpSetR, igraph, ggridges,
+        ggrepel, logging
 Config/testthat/edition: 3
 biocViews: Microbiome, Metagenomics, Software
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2026-04-10 11:06:06 UTC; apple
+Packaged: 2026-04-29 19:56:32 UTC; apple
 Repository: CRAN
-Date/Publication: 2026-04-10 11:30:09 UTC
+Date/Publication: 2026-04-29 20:30:09 UTC

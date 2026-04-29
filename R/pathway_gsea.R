@@ -90,7 +90,13 @@ validate_group_sizes <- function(group_vector, group_name) {
 #'   "all" (default) uses all categories present in the reference data.
 #'   Valid categories are determined by the reference data (currently MF and CC).
 #'   See \code{table(ko_to_go_reference$category)} for available categories.
-#' @param organism A character string specifying the organism for KEGG analysis (default: "ko" for KEGG Orthology)
+#' @param organism Deprecated and has no effect. The KEGG and GO
+#'   reference data bundled with ggpicrust2 are KO-based
+#'   (organism-independent), so gene sets are returned in KO space
+#'   regardless of this argument. Retained only for signature
+#'   compatibility; passing any value other than the default
+#'   \code{"ko"} emits a deprecation warning. Will be removed in a
+#'   future release.
 #'
 #' @return A data frame containing GSEA results with columns:
 #'   \itemize{
@@ -215,6 +221,15 @@ pathway_gsea <- function(abundance,
     p_adjust_method <- p.adjust
   }
   
+  # Normalize PICRUSt2-style input before validation so the feature ID column
+  # is not counted as a sample or mixed into numeric matrix checks.
+  if (is.data.frame(abundance) && ncol(abundance) > 0 &&
+      identical(colnames(abundance)[1], "#NAME")) {
+    abundance <- as.data.frame(abundance)
+    rownames(abundance) <- abundance[, 1]
+    abundance <- abundance[, -1, drop = FALSE]
+  }
+
   # Input validation using unified functions
   validate_abundance(abundance, min_samples = 4)
   validate_metadata(metadata)
@@ -281,15 +296,6 @@ pathway_gsea <- function(abundance,
   
   # Set seed for reproducibility
   set.seed(seed)
-  
-  # Prepare data
-  # Handle #NAME column commonly found in PICRUSt2 output
-  if (ncol(abundance) > 0 && colnames(abundance)[1] == "#NAME") {
-    # Convert tibble to data.frame if necessary and set proper rownames
-    abundance <- as.data.frame(abundance)
-    rownames(abundance) <- abundance[, 1]
-    abundance <- abundance[, -1]
-  }
   
   # Ensure abundance is a matrix with samples as columns
   abundance_mat <- as.matrix(abundance)
@@ -427,7 +433,9 @@ pathway_gsea <- function(abundance,
 #' Prepare gene sets for GSEA
 #'
 #' @param pathway_type A character string specifying the pathway type: "KEGG", "MetaCyc", or "GO"
-#' @param organism A character string specifying the organism (only relevant for KEGG and GO)
+#' @param organism Deprecated and has no effect; gene sets are KO-based
+#'   for both KEGG and GO. See \code{\link{pathway_gsea}} for details.
+#'   Retained for signature compatibility only.
 #' @param go_category A character string specifying the GO category to use.
 #'   "all" (default) uses all categories. Valid values are determined by
 #'   the reference data; see \code{table(ko_to_go_reference$category)}.
@@ -442,9 +450,32 @@ prepare_gene_sets <- function(pathway_type = "KEGG", organism = "ko", go_categor
     stop("pathway_type must be one of: ", paste(valid_types, collapse = ", "))
   }
 
+  # Soft-deprecate `organism`. The KEGG and GO reference tables loaded
+  # below -- `ko_to_kegg_reference` and `ko_to_go_reference` -- are
+  # both keyed on KO identifiers and are organism-independent by
+  # construction, so this argument never actually influenced either
+  # branch. A caller that set `organism = "hsa"` expecting
+  # human-specific pathways silently got the same KO gene sets as
+  # `organism = "ko"`. Raise a visible deprecation warning at the
+  # single choke point both `pathway_gsea()` and direct callers go
+  # through, rather than letting the promise-implementation gap stay
+  # silent. The default value is unchanged so existing callers that
+  # relied on the (ignored) default keep working without a warning.
+  if (!identical(organism, "ko")) {
+    warning(sprintf(
+      "'organism' argument is deprecated and has no effect (got '%s'). ",
+      as.character(organism)[1]),
+      "The KEGG and GO reference data bundled with ggpicrust2 are ",
+      "KO-based (organism-independent), so all gene sets are returned ",
+      "in KO space regardless of this argument. This parameter will ",
+      "be removed in a future release.",
+      call. = FALSE)
+  }
+
   if (pathway_type == "KEGG") {
     # Load KEGG reference using unified loader
     ko_to_kegg_reference <- load_reference_data("ko_to_kegg")
+    ko_to_kegg_reference <- filter_kegg_reference_to_pathways(ko_to_kegg_reference)
 
     # Create gene sets: list where each element is a pathway containing KO IDs
     gene_sets <- split(ko_to_kegg_reference$ko_id, ko_to_kegg_reference$pathway_id)
@@ -549,17 +580,17 @@ calculate_rank_metric <- function(abundance,
                                  group, 
                                  method = "signal2noise") {
   
-  # Extract group information
-  Group <- factor(metadata[[group]])
-  names(Group) <- rownames(metadata)
-  
   # Ensure abundance is a matrix with samples as columns
   abundance <- as.matrix(abundance)
-  
-  # Subset abundance to include only samples in metadata
-  common_samples <- intersect(colnames(abundance), names(Group))
-  abundance <- abundance[, common_samples, drop = FALSE]
-  Group <- Group[common_samples]
+
+  aligned <- align_samples(abundance, metadata, verbose = FALSE)
+  abundance <- as.matrix(aligned$abundance)
+  metadata <- aligned$metadata
+
+  # Extract group information after alignment so sample names come from the
+  # authoritative abundance columns, not from metadata row names.
+  Group <- factor(metadata[[group]])
+  names(Group) <- colnames(abundance)
 
   # Handle problematic values - replace with 0 (undetected features)
   if (any(is.infinite(abundance))) {
@@ -614,8 +645,18 @@ calculate_rank_metric <- function(abundance,
     names(metric) <- rownames(abundance)
     
     for (i in seq_len(nrow(abundance))) {
-      t_test <- stats::t.test(abundance[i, group1_samples], abundance[i, group2_samples])
-      metric[i] <- t_test$statistic
+      metric[i] <- tryCatch({
+        t_test <- stats::t.test(abundance[i, group1_samples], abundance[i, group2_samples])
+        as.numeric(t_test$statistic)
+      }, error = function(e) {
+        # Constant rows carry no ranking signal. Keep them in the ranked
+        # vector as neutral rather than aborting the whole preranked GSEA run.
+        if (grepl("constant|not enough", e$message, ignore.case = TRUE)) {
+          0
+        } else {
+          stop(e)
+        }
+      })
     }
     
   } else if (method == "log2_ratio") {
@@ -818,19 +859,26 @@ run_limma_gsea <- function(abundance_mat,
   # First, add a small pseudocount to avoid log(0)
   abundance_mat <- abundance_mat + 0.5
 
-  # Use limma-voom for count data transformation
-  # This estimates the mean-variance relationship and computes precision weights
-  tryCatch({
-    v <- limma::voom(abundance_mat, design, plot = FALSE)
-  }, error = function(e) {
-    # Fallback: use log2 transformation if voom fails
-    warning("voom transformation failed, using log2 transformation instead: ", e$message)
-    v <<- list(
-      E = log2(abundance_mat),
-      weights = matrix(1, nrow = nrow(abundance_mat), ncol = ncol(abundance_mat))
-    )
-    class(v) <<- "EList"
-  })
+  # Use limma-voom for count data transformation. This estimates the
+  # mean-variance relationship and computes precision weights.
+  #
+  # The fallback (log2 transform with unit weights) was previously
+  # written with `<<-`, which injected the fallback object into the
+  # enclosing frame as a side effect. That violates functional scoping
+  # and pollutes whichever environment the handler happened to run in.
+  # Treat `tryCatch()` as an expression and bind its value locally.
+  v <- tryCatch(
+    limma::voom(abundance_mat, design, plot = FALSE),
+    error = function(e) {
+      warning("voom transformation failed, using log2 transformation instead: ", e$message)
+      fallback <- list(
+        E = log2(abundance_mat),
+        weights = matrix(1, nrow = nrow(abundance_mat), ncol = ncol(abundance_mat))
+      )
+      class(fallback) <- "EList"
+      fallback
+    }
+  )
 
   # Run the selected method
   if (method == "camera") {

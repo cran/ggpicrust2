@@ -5,7 +5,7 @@
 #' @param names A vector of names for the metagenomes in the same order as in the `metagenomes` list.
 #' @param daa_method A character specifying the method for differential abundance analysis (DAA).
 #' Possible choices are: "ALDEx2", "DESeq2", "edgeR", "limma voom", "metagenomeSeq", "LinDA",
-#' "Maaslin2", and "Lefse". The default is "ALDEx2".
+#' "Maaslin2", and "Lefser". The default is "ALDEx2".
 #' @param p_adjust_method A character specifying the method for p-value adjustment.
 #' Possible choices are: "BH" (Benjamini-Hochberg), "holm", "bonferroni", "hochberg", "fdr", and "none".
 #' The default is "BH".
@@ -63,8 +63,69 @@ compare_metagenome_results <- function(metagenomes, names, daa_method = "ALDEx2"
   if (length(metagenomes) != length(names)) {
     stop("The length of 'metagenomes' must match the length of 'names'")
   }
+  require_package("circlize", "comparison heatmap")
+  require_package("ComplexHeatmap", "comparison heatmap")
 
-  # Concatenate metagenomes with pseudonym column names
+  # Align every metagenome on the shared feature set AND the shared sample
+  # set before anything else. Both downstream steps index by position:
+  #
+  #   * `cbind()` concatenates feature-by-position for the DAA matrix.
+  #   * the per-feature Spearman correlation indexes
+  #     `metagenomes[[i]][k, ]` vs `metagenomes[[j]][k, ]` -- i.e. compares
+  #     a feature's abundance pattern *across samples* between two
+  #     metagenomes, which is only biologically meaningful if column k
+  #     refers to the same biological sample in both matrices.
+  #
+  # So two alignments are needed in parallel:
+  #   1. Intersect row names (features). Two metagenomes with identical
+  #      feature names in different orders used to produce correlations
+  #      that could flip sign vs the correct by-name alignment.
+  #   2. Intersect column names (samples). Two metagenomes with identical
+  #      sample names in different orders used to correlate "sample 1 of
+  #      metagenome A" against "sample 5 of metagenome B" and produce
+  #      meaningless negative correlations. Mismatched column counts also
+  #      used to fall through to `stats::cor()` and abort mid-loop with
+  #      "incompatible dimensions" instead of failing at the boundary.
+  if (any(vapply(metagenomes, function(m) is.null(rownames(m)), logical(1)))) {
+    stop("Every element of 'metagenomes' must have row names (feature identifiers) ",
+         "so features can be aligned across metagenomes.")
+  }
+  if (any(vapply(metagenomes, function(m) is.null(colnames(m)), logical(1)))) {
+    stop("Every element of 'metagenomes' must have column names (sample identifiers) ",
+         "so samples can be aligned across metagenomes.")
+  }
+  shared_features <- Reduce(intersect, lapply(metagenomes, rownames))
+  if (length(shared_features) == 0) {
+    stop("No shared feature identifiers (row names) across the provided metagenomes.")
+  }
+  shared_samples <- Reduce(intersect, lapply(metagenomes, colnames))
+  if (length(shared_samples) == 0) {
+    stop("No shared sample identifiers (column names) across the provided metagenomes. ",
+         "Per-sample correlation requires the same biological samples to appear ",
+         "in every metagenome.")
+  }
+  # Warn if alignment drops samples. A partial overlap is almost always a
+  # user mistake (the function is designed for parallel quantifications on
+  # the same samples); proceeding silently would hide it.
+  for (nm_i in seq_along(metagenomes)) {
+    dropped <- setdiff(colnames(metagenomes[[nm_i]]), shared_samples)
+    if (length(dropped) > 0) {
+      warning(sprintf(
+        "Metagenome '%s': %d sample(s) dropped by cross-metagenome intersection (%s).",
+        names[nm_i], length(dropped),
+        paste(utils::head(dropped, 5),
+              collapse = ", ")),
+        call. = FALSE)
+    }
+  }
+  metagenomes <- lapply(metagenomes,
+                        function(m) m[shared_features, shared_samples, drop = FALSE])
+
+  # Concatenate metagenomes with pseudonym column names. After the
+  # alignment above, every matrix has identical rownames AND identical
+  # colnames in the same order, so cbind() is guaranteed to stack the
+  # same feature across columns, and the downstream per-feature
+  # correlation compares the same biological samples across matrices.
   pseudonym_metagenomes <- lapply(seq_along(metagenomes), function(i) {
     new_metagenome <- metagenomes[[i]]
     colnames(new_metagenome) <- paste0(names[i], "_", colnames(new_metagenome))
@@ -84,23 +145,36 @@ compare_metagenome_results <- function(metagenomes, names, daa_method = "ALDEx2"
                              p_adjust_method = p_adjust_method,
                              reference = reference)
 
-  # Compute per-feature Spearman correlations between metagenomes
-  # For each pair, compute correlation per feature row, then summarize with median
+  # Compute per-feature Spearman correlations between metagenomes. Safe
+  # to index by both row position (shared feature order) and column
+  # position (shared sample order) now that every metagenome has been
+  # aligned in both dimensions above.
   n_metagenomes <- length(names)
   cor_matrix <- matrix(NA, nrow = n_metagenomes, ncol = n_metagenomes)
   p_matrix <- matrix(NA, nrow = n_metagenomes, ncol = n_metagenomes)
 
   for (i in seq_along(names)) {
     for (j in seq(from = i, to = n_metagenomes)) {
-      # Per-feature correlation: correlate sample profiles for each feature
-      feature_cors <- sapply(seq_len(nrow(metagenomes[[i]])), function(k) {
+      feature_cors <- vapply(seq_along(shared_features), function(k) {
         stats::cor(metagenomes[[i]][k, ], metagenomes[[j]][k, ], method = "spearman")
-      })
+      }, numeric(1))
       cor_matrix[i, j] <- median(feature_cors, na.rm = TRUE)
       cor_matrix[j, i] <- cor_matrix[i, j]
 
-      # Test if median correlation differs from 0
-      p_matrix[i, j] <- stats::wilcox.test(feature_cors, mu = 0)$p.value
+      # Test if the per-feature correlations differ from 0 as a group.
+      # `exact = FALSE` forces the normal approximation instead of letting
+      # wilcox.test() try (and fail on ties) to compute an exact p-value.
+      # Ties are endemic to Spearman correlations -- any pair of features
+      # with the same rank pattern yields identical coefficients -- so the
+      # default `exact = NULL` would spam "cannot compute exact p-value
+      # with ties" warnings that are purely an internal implementation
+      # detail and would drown out user-facing warnings (e.g. dropped
+      # samples from the cross-metagenome intersection just above). The
+      # numerical p-value is unchanged whenever ties exist, and this
+      # function's typical n (feature count, usually thousands) puts the
+      # normal approximation well within its accurate regime anyway.
+      p_matrix[i, j] <- stats::wilcox.test(feature_cors, mu = 0,
+                                           exact = FALSE)$p.value
       p_matrix[j, i] <- p_matrix[i, j]
     }
   }
