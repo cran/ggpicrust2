@@ -47,6 +47,61 @@ test_that("pathway_annotation basic functionality works", {
   unlink(temp_file)
 })
 
+test_that("pathway_annotation annotates KEGG pathway abundance data from row names", {
+  kegg_abundance <- data.frame(
+    Sample1 = c(10, 20),
+    Sample2 = c(15, 25),
+    row.names = c("ko00010", "ko00020")
+  )
+
+  result <- suppressMessages(pathway_annotation(
+    data = kegg_abundance,
+    pathway = "KEGG",
+    ko_to_kegg = FALSE
+  ))
+
+  expect_s3_class(result, "data.frame")
+  expect_true(all(c("feature", "description", "pathway_name") %in% colnames(result)))
+  expect_equal(result$feature, c("ko00010", "ko00020"))
+  expect_true("Glycolysis / Gluconeogenesis" %in% result$description)
+})
+
+test_that("pathway_annotation annotates KEGG pathway data with explicit pathway column", {
+  kegg_abundance <- data.frame(
+    pathway = c("ko00010", "ko00020"),
+    Sample1 = c(10, 20),
+    Sample2 = c(15, 25),
+    stringsAsFactors = FALSE
+  )
+
+  result <- suppressMessages(pathway_annotation(
+    data = kegg_abundance,
+    pathway = "KEGG",
+    ko_to_kegg = FALSE
+  ))
+
+  expect_s3_class(result, "data.frame")
+  expect_true(all(c("description", "pathway_name") %in% colnames(result)))
+  expect_true(any(!is.na(result$pathway_name)))
+})
+
+test_that("pathway_annotation supports PICRUSt2 ko-prefixed KO IDs", {
+  temp_file <- tempfile(fileext = ".tsv")
+  test_data <- data.frame(
+    `function` = c("ko:K00001", "ko:K00002"),
+    sample1 = c(1, 2),
+    sample2 = c(3, 4),
+    check.names = FALSE
+  )
+  suppressMessages(write.table(test_data, temp_file, sep = "\t", row.names = FALSE))
+  on.exit(unlink(temp_file))
+
+  result <- suppressMessages(pathway_annotation(file = temp_file, pathway = "KO", ko_to_kegg = FALSE))
+
+  expect_true(any(!is.na(result$description)))
+  expect_false(all(is.na(result$description)))
+})
+
 test_that("pathway_annotation works with daa_results_df input", {
   test_daa_df <- data.frame(
     feature = c("K00001", "K00002"),

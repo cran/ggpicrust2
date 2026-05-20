@@ -84,6 +84,9 @@ knitr::opts_chunk$set(
 # # For pred_metagenome_contrib.tsv
 # contrib_data <- read_contrib_file("pred_metagenome_contrib.tsv")
 # 
+# # For path_abun_contrib.tsv.gz; PICRUSt2 pathway output commonly uses MetaCyc IDs.
+# path_contrib_data <- read_pathway_contrib_file("path_abun_contrib.tsv.gz")
+# 
 # # For pred_metagenome_strat.tsv
 # strat_data <- read_strat_file("pred_metagenome_strat.tsv")
 
@@ -97,6 +100,19 @@ knitr::opts_chunk$set(
 # )
 # 
 # head(taxa_contrib)
+
+## ----pathway-contrib-no-daa, eval = FALSE-------------------------------------
+# path_taxa_contrib <- aggregate_taxa_contributions(
+#   contrib_data = path_contrib_data,
+#   taxonomy = your_taxonomy_table,
+#   tax_level = "Genus",
+#   top_n = 10
+# )
+# 
+# pathway_annotation_df <- pathway_annotation(
+#   data = data.frame(function_id = unique(path_taxa_contrib$function_id)),
+#   pathway = "MetaCyc"
+# )
 
 ## ----contrib-plots, eval = FALSE----------------------------------------------
 # taxa_contribution_bar(

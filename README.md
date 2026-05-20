@@ -415,7 +415,7 @@ kegg_abundance <- ko2kegg_abundance("path/to/your/pred_metagenome_unstrat.tsv")
 # include_effect_size = FALSE to skip that step.
 daa_results_df <- pathway_daa(abundance = kegg_abundance, metadata = metadata, group = "Environment", daa_method = "ALDEx2", select = NULL, reference = NULL)
 
-# Filter results for ALDEx2_Welch's t test method
+# Filter results for ALDEx2_Wilcoxon rank test method
 # Please check the unique(daa_results_df$method) and choose one
 daa_sub_method_results_df <- daa_results_df[daa_results_df$method == "ALDEx2_Wilcoxon rank test", ]
 
@@ -448,7 +448,7 @@ ko_abundance <- read.delim("path/to/your/pred_metagenome_unstrat.tsv")
 # overlap) are included by default; see the section above.
 daa_results_df <- pathway_daa(abundance = ko_abundance %>% column_to_rownames("#NAME"), metadata = metadata, group = "Environment", daa_method = "ALDEx2", select = NULL, reference = NULL)
 
-# Filter results for ALDEx2_Kruskal-Wallace test method
+# Filter results for ALDEx2_Wilcoxon rank test method
 daa_sub_method_results_df <- daa_results_df[daa_results_df$method == "ALDEx2_Wilcoxon rank test", ]
 
 # Annotate pathway results without KO to KEGG conversion
@@ -842,9 +842,10 @@ print(results$correlation$p_matrix)
 
 ### taxa contribution workflow
 
-The taxa contribution workflow connects PICRUSt2 per-sequence outputs
+The taxa contribution workflow connects PICRUSt2 contribution outputs
 with downstream pathway interpretation. Use `read_contrib_file()` for
-`pred_metagenome_contrib.tsv`, or `read_strat_file()` for
+`pred_metagenome_contrib.tsv`, `read_pathway_contrib_file()` for
+pathway-level `path_abun_contrib.tsv`, or `read_strat_file()` for
 `pred_metagenome_strat.tsv`, then aggregate to the taxonomic level you
 want to visualize.
 
@@ -853,6 +854,10 @@ library(ggpicrust2)
 
 # Parse PICRUSt2 per-sequence contribution output
 contrib_data <- read_contrib_file("pred_metagenome_contrib.tsv")
+
+# Or parse pathway-level contribution output without running DA analysis
+# PICRUSt2 pathway contribution files are often gzipped and use MetaCyc IDs.
+path_contrib_data <- read_pathway_contrib_file("path_abun_contrib.tsv.gz")
 
 # Optional: use pathway-level DAA results to keep only significant pathways
 data("kegg_abundance")
@@ -885,6 +890,25 @@ taxa_contribution_bar(
 # Summarize mean contribution patterns across taxa and functions
 taxa_contribution_heatmap(
   contrib_agg = taxa_contrib,
+  n_functions = 20
+)
+
+# Pathway-level contribution workflow without DA filtering
+path_taxa_contrib <- aggregate_taxa_contributions(
+  contrib_data = path_contrib_data,
+  taxonomy = your_taxonomy_table,
+  tax_level = "Genus",
+  top_n = 10
+)
+
+pathway_annotation_df <- pathway_annotation(
+  data = data.frame(function_id = unique(path_taxa_contrib$function_id)),
+  pathway = "MetaCyc"
+)
+
+taxa_contribution_heatmap(
+  contrib_agg = path_taxa_contrib,
+  annotation_data = pathway_annotation_df,
   n_functions = 20
 )
 ```

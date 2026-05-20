@@ -446,16 +446,19 @@ or visualization.</p>
 </div>
 <div id="taxa-contribution-workflow" class="section level2">
 <h2>Taxa contribution workflow</h2>
-<p>PICRUSt2 can output per-sequence contribution files that explain
-which taxa are driving predicted functional shifts.
-<code>ggpicrust2</code> now supports a full contribution workflow.</p>
+<p>PICRUSt2 can output contribution files that explain which taxa are
+driving predicted functional shifts. <code>ggpicrust2</code> supports
+both gene-family-level and pathway-level contribution workflows.</p>
 <div id="read-picrust2-contribution-files" class="section level3">
 <h3>Read PICRUSt2 contribution files</h3>
 <div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a><span class="co"># For pred_metagenome_contrib.tsv</span></span>
 <span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a>contrib_data <span class="ot">&lt;-</span> <span class="fu">read_contrib_file</span>(<span class="st">&quot;pred_metagenome_contrib.tsv&quot;</span>)</span>
 <span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a></span>
-<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a><span class="co"># For pred_metagenome_strat.tsv</span></span>
-<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a>strat_data <span class="ot">&lt;-</span> <span class="fu">read_strat_file</span>(<span class="st">&quot;pred_metagenome_strat.tsv&quot;</span>)</span></code></pre></div>
+<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a><span class="co"># For path_abun_contrib.tsv.gz; PICRUSt2 pathway output commonly uses MetaCyc IDs.</span></span>
+<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a>path_contrib_data <span class="ot">&lt;-</span> <span class="fu">read_pathway_contrib_file</span>(<span class="st">&quot;path_abun_contrib.tsv.gz&quot;</span>)</span>
+<span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a></span>
+<span id="cb8-7"><a href="#cb8-7" tabindex="-1"></a><span class="co"># For pred_metagenome_strat.tsv</span></span>
+<span id="cb8-8"><a href="#cb8-8" tabindex="-1"></a>strat_data <span class="ot">&lt;-</span> <span class="fu">read_strat_file</span>(<span class="st">&quot;pred_metagenome_strat.tsv&quot;</span>)</span></code></pre></div>
 </div>
 <div id="aggregate-to-a-taxonomic-level" class="section level3">
 <h3>Aggregate to a taxonomic level</h3>
@@ -472,25 +475,42 @@ which taxa are driving predicted functional shifts.
 <ul>
 <li>normalized contribution data from
 <code>read_contrib_file()</code></li>
+<li>pathway-level contribution data from
+<code>read_pathway_contrib_file()</code></li>
 <li>stratified abundance data from <code>read_strat_file()</code></li>
 </ul>
 <p>Use <code>daa_results_df</code> or <code>pathway_ids</code> when you
 want to focus only on pathways that were significant in your
 pathway-level analysis.</p>
+<p>When you already have pathway-level contribution data and do not want
+to run differential abundance analysis, omit <code>daa_results_df</code>
+and aggregate directly. For PICRUSt2 pathway contribution output, use
+matching MetaCyc annotations rather than KEGG pathway annotations.</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a>path_taxa_contrib <span class="ot">&lt;-</span> <span class="fu">aggregate_taxa_contributions</span>(</span>
+<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a>  <span class="at">contrib_data =</span> path_contrib_data,</span>
+<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a>  <span class="at">taxonomy =</span> your_taxonomy_table,</span>
+<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a>  <span class="at">tax_level =</span> <span class="st">&quot;Genus&quot;</span>,</span>
+<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a>  <span class="at">top_n =</span> <span class="dv">10</span></span>
+<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a>)</span>
+<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a></span>
+<span id="cb10-8"><a href="#cb10-8" tabindex="-1"></a>pathway_annotation_df <span class="ot">&lt;-</span> <span class="fu">pathway_annotation</span>(</span>
+<span id="cb10-9"><a href="#cb10-9" tabindex="-1"></a>  <span class="at">data =</span> <span class="fu">data.frame</span>(<span class="at">function_id =</span> <span class="fu">unique</span>(path_taxa_contrib<span class="sc">$</span>function_id)),</span>
+<span id="cb10-10"><a href="#cb10-10" tabindex="-1"></a>  <span class="at">pathway =</span> <span class="st">&quot;MetaCyc&quot;</span></span>
+<span id="cb10-11"><a href="#cb10-11" tabindex="-1"></a>)</span></code></pre></div>
 </div>
 <div id="visualize-taxa-level-drivers" class="section level3">
 <h3>Visualize taxa-level drivers</h3>
-<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a><span class="fu">taxa_contribution_bar</span>(</span>
-<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a>  <span class="at">contrib_agg =</span> taxa_contrib,</span>
-<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a>  <span class="at">metadata =</span> metadata,</span>
-<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a>  <span class="at">group =</span> <span class="st">&quot;Environment&quot;</span>,</span>
-<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a>  <span class="at">facet_by =</span> <span class="st">&quot;function&quot;</span></span>
-<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a>)</span>
-<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a></span>
-<span id="cb10-8"><a href="#cb10-8" tabindex="-1"></a><span class="fu">taxa_contribution_heatmap</span>(</span>
-<span id="cb10-9"><a href="#cb10-9" tabindex="-1"></a>  <span class="at">contrib_agg =</span> taxa_contrib,</span>
-<span id="cb10-10"><a href="#cb10-10" tabindex="-1"></a>  <span class="at">n_functions =</span> <span class="dv">20</span></span>
-<span id="cb10-11"><a href="#cb10-11" tabindex="-1"></a>)</span></code></pre></div>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a><span class="fu">taxa_contribution_bar</span>(</span>
+<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a>  <span class="at">contrib_agg =</span> taxa_contrib,</span>
+<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a>  <span class="at">metadata =</span> metadata,</span>
+<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a>  <span class="at">group =</span> <span class="st">&quot;Environment&quot;</span>,</span>
+<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a>  <span class="at">facet_by =</span> <span class="st">&quot;function&quot;</span></span>
+<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a>)</span>
+<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a></span>
+<span id="cb11-8"><a href="#cb11-8" tabindex="-1"></a><span class="fu">taxa_contribution_heatmap</span>(</span>
+<span id="cb11-9"><a href="#cb11-9" tabindex="-1"></a>  <span class="at">contrib_agg =</span> taxa_contrib,</span>
+<span id="cb11-10"><a href="#cb11-10" tabindex="-1"></a>  <span class="at">n_functions =</span> <span class="dv">20</span></span>
+<span id="cb11-11"><a href="#cb11-11" tabindex="-1"></a>)</span></code></pre></div>
 <p>This step is useful when pathway-level significance is not enough and
 you need to identify which taxa are contributing to the change.</p>
 </div>
@@ -499,24 +519,24 @@ you need to identify which taxa are contributing to the change.</p>
 <h2>GSEA workflow</h2>
 <p>Use GSEA when you want pathway-set level inference from KO or EC
 abundance rather than testing each pathway independently.</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a>gsea_results <span class="ot">&lt;-</span> <span class="fu">pathway_gsea</span>(</span>
-<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a>  <span class="at">abundance =</span> ko_abundance <span class="sc">%&gt;%</span> <span class="fu">column_to_rownames</span>(<span class="st">&quot;#NAME&quot;</span>),</span>
-<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a>  <span class="at">metadata =</span> metadata,</span>
-<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a>  <span class="at">group =</span> <span class="st">&quot;Environment&quot;</span>,</span>
-<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a>  <span class="at">pathway_type =</span> <span class="st">&quot;KEGG&quot;</span>,</span>
-<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a>  <span class="at">method =</span> <span class="st">&quot;camera&quot;</span></span>
-<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a>)</span>
-<span id="cb11-8"><a href="#cb11-8" tabindex="-1"></a></span>
-<span id="cb11-9"><a href="#cb11-9" tabindex="-1"></a>annotated_gsea <span class="ot">&lt;-</span> <span class="fu">gsea_pathway_annotation</span>(</span>
-<span id="cb11-10"><a href="#cb11-10" tabindex="-1"></a>  <span class="at">gsea_results =</span> gsea_results,</span>
-<span id="cb11-11"><a href="#cb11-11" tabindex="-1"></a>  <span class="at">pathway_type =</span> <span class="st">&quot;KEGG&quot;</span></span>
-<span id="cb11-12"><a href="#cb11-12" tabindex="-1"></a>)</span>
-<span id="cb11-13"><a href="#cb11-13" tabindex="-1"></a></span>
-<span id="cb11-14"><a href="#cb11-14" tabindex="-1"></a><span class="fu">visualize_gsea</span>(</span>
-<span id="cb11-15"><a href="#cb11-15" tabindex="-1"></a>  <span class="at">gsea_results =</span> annotated_gsea,</span>
-<span id="cb11-16"><a href="#cb11-16" tabindex="-1"></a>  <span class="at">plot_type =</span> <span class="st">&quot;barplot&quot;</span>,</span>
-<span id="cb11-17"><a href="#cb11-17" tabindex="-1"></a>  <span class="at">n_pathways =</span> <span class="dv">15</span></span>
-<span id="cb11-18"><a href="#cb11-18" tabindex="-1"></a>)</span></code></pre></div>
+<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a>gsea_results <span class="ot">&lt;-</span> <span class="fu">pathway_gsea</span>(</span>
+<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a>  <span class="at">abundance =</span> ko_abundance <span class="sc">%&gt;%</span> <span class="fu">column_to_rownames</span>(<span class="st">&quot;#NAME&quot;</span>),</span>
+<span id="cb12-3"><a href="#cb12-3" tabindex="-1"></a>  <span class="at">metadata =</span> metadata,</span>
+<span id="cb12-4"><a href="#cb12-4" tabindex="-1"></a>  <span class="at">group =</span> <span class="st">&quot;Environment&quot;</span>,</span>
+<span id="cb12-5"><a href="#cb12-5" tabindex="-1"></a>  <span class="at">pathway_type =</span> <span class="st">&quot;KEGG&quot;</span>,</span>
+<span id="cb12-6"><a href="#cb12-6" tabindex="-1"></a>  <span class="at">method =</span> <span class="st">&quot;camera&quot;</span></span>
+<span id="cb12-7"><a href="#cb12-7" tabindex="-1"></a>)</span>
+<span id="cb12-8"><a href="#cb12-8" tabindex="-1"></a></span>
+<span id="cb12-9"><a href="#cb12-9" tabindex="-1"></a>annotated_gsea <span class="ot">&lt;-</span> <span class="fu">gsea_pathway_annotation</span>(</span>
+<span id="cb12-10"><a href="#cb12-10" tabindex="-1"></a>  <span class="at">gsea_results =</span> gsea_results,</span>
+<span id="cb12-11"><a href="#cb12-11" tabindex="-1"></a>  <span class="at">pathway_type =</span> <span class="st">&quot;KEGG&quot;</span></span>
+<span id="cb12-12"><a href="#cb12-12" tabindex="-1"></a>)</span>
+<span id="cb12-13"><a href="#cb12-13" tabindex="-1"></a></span>
+<span id="cb12-14"><a href="#cb12-14" tabindex="-1"></a><span class="fu">visualize_gsea</span>(</span>
+<span id="cb12-15"><a href="#cb12-15" tabindex="-1"></a>  <span class="at">gsea_results =</span> annotated_gsea,</span>
+<span id="cb12-16"><a href="#cb12-16" tabindex="-1"></a>  <span class="at">plot_type =</span> <span class="st">&quot;barplot&quot;</span>,</span>
+<span id="cb12-17"><a href="#cb12-17" tabindex="-1"></a>  <span class="at">n_pathways =</span> <span class="dv">15</span></span>
+<span id="cb12-18"><a href="#cb12-18" tabindex="-1"></a>)</span></code></pre></div>
 <p>For a method-by-method GSEA explanation, covariate adjustment, and
 comparison with DAA, see the <code>gsea_analysis</code> vignette.</p>
 </div>
