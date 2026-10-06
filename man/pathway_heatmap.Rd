@@ -3,20 +3,55 @@
 \name{pathway_heatmap}
 \alias{pathway_heatmap}
 \title{Create pathway heatmap with support for multiple grouping variables}
+\usage{
+pathway_heatmap(
+  abundance,
+  metadata,
+  group,
+  secondary_groups = NULL,
+  colors = NULL,
+  font_size = 12,
+  show_row_names = TRUE,
+  show_legend = TRUE,
+  custom_theme = NULL,
+  low_color = "#0571b0",
+  mid_color = "white",
+  high_color = "#ca0020",
+  cluster_rows = FALSE,
+  cluster_cols = FALSE,
+  clustering_method = "complete",
+  clustering_distance = "euclidean",
+  dendro_line_size = 0.5,
+  dendro_labels = FALSE,
+  facet_by = NULL,
+  colorbar_title = "Z Score",
+  colorbar_position = "right",
+  colorbar_width = 0.6,
+  colorbar_height = 9,
+  colorbar_breaks = NULL
+)
+}
 \arguments{
 \item{abundance}{A matrix or data frame of pathway abundance data, where columns
-correspond to samples and rows correspond to pathways. Must contain at least
+correspond to samples and rows correspond to pathways. Data frames may also
+provide a leading non-numeric feature ID column (for example \code{#NAME},
+\code{feature}, or \code{pathway}); it is converted to row names before
+sample alignment. Values must be finite numeric values and may contain
+negative or zero-sum transformed sample profiles. Must contain at least
 two samples.}
 
 \item{metadata}{A data frame of metadata, where each row corresponds to a sample
-and each column corresponds to a metadata variable.}
+and each column corresponds to a metadata variable. Grouping variables must
+be complete and contain at least two levels among the samples that align to
+the abundance columns.}
 
 \item{group}{A character string specifying the column name in the metadata data frame
 that contains the primary group variable. Must contain at least two groups.}
 
 \item{secondary_groups}{A character vector specifying additional grouping variables
 for creating nested faceted heatmaps. If NULL, only the primary group will be used.
-These variables will be used as secondary levels in the faceting hierarchy.}
+These variables will be used as secondary levels in the faceting hierarchy
+and must also remain complete with at least two levels after sample alignment.}
 
 \item{colors}{A vector of colors used for the background of the facet labels in the
 heatmap. If NULL or not provided, a default color set is used for the facet strips.}
@@ -39,16 +74,17 @@ heatmap. If NULL or not provided, a default color set is used for the facet stri
 
 \item{cluster_cols}{A logical value indicating whether to cluster columns (samples). Default is FALSE.}
 
-\item{clustering_method}{A character string specifying the clustering method. Options: "complete", "average", "single", "ward.D", "ward.D2", "mcquitty", "median", "centroid". Default is "complete".}
+\item{clustering_method}{A character string specifying the clustering method. Options: "complete", "average", "single", "ward.D", "ward.D2", "mcquitty", "median", "centroid". Default is "complete". Ward methods require \code{clustering_distance = "euclidean"}.}
 
-\item{clustering_distance}{A character string specifying the distance metric. Options: "euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski", "correlation", "spearman". Default is "euclidean".}
+\item{clustering_distance}{A character string specifying the distance metric. Options: "euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski", "correlation", "spearman". Default is "euclidean". Use "average" or "complete" linkage for correlation or rank-based distances.}
 
 \item{dendro_line_size}{A numeric value specifying the line width of dendrogram branches. Default is 0.5.}
 
 \item{dendro_labels}{A logical value indicating whether to show dendrogram labels. Default is FALSE.}
 
 \item{facet_by}{\strong{[Deprecated]} A character string specifying an additional grouping variable for creating faceted heatmaps.
-This parameter is deprecated and will be removed in future versions. Use \code{secondary_groups} instead.}
+This parameter is deprecated and will be removed in future versions. Use \code{secondary_groups} instead;
+supplying different values to both parameters is an error.}
 
 \item{colorbar_title}{A character string specifying the title for the color bar. Default is "Z Score".}
 
@@ -72,6 +108,7 @@ orders the samples based on the grouping information. The heatmap supports neste
 faceting for multiple grouping variables and is created using the `ggplot2` library.
 }
 \examples{
+\dontshow{if (requireNamespace("MicrobiomeStat", quietly = TRUE) && requireNamespace("ggdendro", quietly = TRUE)) withAutoprint(\{ # examplesIf}
 \donttest{
 library(ggpicrust2)
 library(ggh4x)
@@ -81,7 +118,7 @@ library(tibble)
 library(magrittr)
 
 # Create example functional pathway abundance data
-kegg_abundance_example <- matrix(rnorm(30), nrow = 3, ncol = 10)
+kegg_abundance_example <- matrix(rexp(30), nrow = 3, ncol = 10)
 colnames(kegg_abundance_example) <- paste0("Sample", 1:10)
 rownames(kegg_abundance_example) <- c("PathwayA", "PathwayB", "PathwayC")
 
@@ -115,7 +152,7 @@ pathway_heatmap(
   metadata = metadata_example,
   group = "group",
   cluster_cols = TRUE,
-  clustering_method = "ward.D2",
+  clustering_method = "average",
   clustering_distance = "correlation"
 )
 
@@ -189,7 +226,7 @@ pathway_heatmap(
   metadata = metadata,
   group = "Environment",
   cluster_rows = TRUE,
-  clustering_method = "ward.D2",
+  clustering_method = "average",
   clustering_distance = "correlation",
   colors = custom_colors,
   low_color = "#2166ac",  # Custom blue for low values
@@ -239,8 +276,9 @@ pathway_heatmap(
   group = "Environment",              # Primary: Pro-survival vs others
   secondary_groups = "Group",         # Secondary: Broad Institute vs Jackson Labs
   cluster_rows = TRUE,
-  clustering_method = "ward.D2",
+  clustering_method = "average",
   clustering_distance = "correlation"
 )
 }
+\dontshow{\}) # examplesIf}
 }

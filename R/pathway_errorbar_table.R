@@ -7,17 +7,26 @@
 #'
 #' @param abundance A data frame or matrix containing predicted functional 
 #'        pathway abundance, with pathways/features as rows and samples as 
-#'        columns. The column names should match the sample names in metadata.
+#'        columns. Data frames may also provide a leading non-numeric feature
+#'        ID column (for example \code{#NAME}, \code{feature}, or
+#'        \code{pathway}); it is converted to row names before sample alignment
+#'        or Group length validation. The column names should match the sample
+#'        names in metadata.
 #' @param daa_results_df A data frame containing differential abundance 
 #'        analysis results from pathway_daa function. Must contain columns: 
-#'        feature, group1, group2, p_adjust.
+#'        feature, group1, group2, p_adjust. Within the selected method and
+#'        group pair, feature identifiers must be unique.
 #' @param Group A vector containing group assignments for each sample in the
 #'        same order as the columns in abundance matrix. Alternatively, if
 #'        metadata is provided, this should match the order of samples in metadata.
+#'        Values must be non-missing and non-empty after alignment, and must
+#'        include the selected DAA result's \code{group1} and \code{group2}
+#'        labels. Without metadata, a vector named with sample IDs is aligned
+#'        to abundance columns. Prefer this to an unchecked unnamed vector.
 #' @param ko_to_kegg Logical value indicating whether to use KO to KEGG 
 #'        conversion. Default is FALSE.
 #' @param p_values_threshold Numeric value for p-value threshold to filter 
-#'        significant features. Default is 0.05.
+#'        significant features. Default is 0.05. Must be in the range (0, 1].
 #' @param select Character vector of specific features to include. If NULL, 
 #'        all significant features are included.
 #' @param max_features Maximum number of features to include in the table.
@@ -48,6 +57,12 @@
 #'         daa_results_df
 #' }
 #'
+#' @details
+#' Relative abundances use all supplied feature rows as each sample's
+#' denominator. Filtering the input matrix first changes the summaries.
+#' The table's log2 fold change is a descriptive group-mean ratio with a
+#' pseudocount, not a covariate-adjusted DAA model coefficient.
+#'
 #' @examples
 #' \dontrun{
 #' # Load example data
@@ -62,26 +77,21 @@
 #'   abundance = kegg_abundance,
 #'   metadata = metadata,
 #'   group = "Environment",
-#'   daa_method = "ALDEx2"
+#'   daa_method = "LinDA"
 #' )
 #' 
-#' # Filter for specific method
-#' daa_sub_method_results_df <- daa_results_df[
-#'   daa_results_df$method == "ALDEx2_Welch's t test", 
-#' ]
-#' 
 #' # Annotate results
-#' daa_annotated_sub_method_results_df <- pathway_annotation(
+#' daa_annotated_results_df <- pathway_annotation(
 #'   pathway = "KO",
-#'   daa_results_df = daa_sub_method_results_df,
+#'   daa_results_df = daa_results_df,
 #'   ko_to_kegg = TRUE
 #' )
 #' 
 #' # Generate abundance statistics table
 #' abundance_stats_table <- pathway_errorbar_table(
 #'   abundance = kegg_abundance,
-#'   daa_results_df = daa_annotated_sub_method_results_df,
-#'   Group = metadata$Environment,
+#'   daa_results_df = daa_annotated_results_df,
+#'   Group = setNames(metadata$Environment, metadata$sample_name),
 #'   ko_to_kegg = TRUE,
 #'   p_values_threshold = 0.05
 #' )
@@ -98,15 +108,21 @@ pathway_errorbar_table <- function(abundance,
                                   ko_to_kegg = FALSE,
                                   p_values_threshold = 0.05,
                                   select = NULL,
-	                                  max_features = 30,
-	                                  metadata = NULL,
-	                                  sample_col = NULL) {
+                                  max_features = 30,
+                                  metadata = NULL,
+                                  sample_col = NULL) {
   ko_to_kegg <- normalize_logical_flag(ko_to_kegg, "ko_to_kegg")
+  validate_positive_integer_or_infinity(max_features, "max_features")
+  select <- validate_optional_character_values(select, "select")
 
-	  # Input validation
+  # Input validation
   if (!is.matrix(abundance) && !is.data.frame(abundance)) {
     stop("'abundance' must be a matrix or data frame")
   }
+  abundance <- normalize_abundance_feature_ids(
+    abundance,
+    context = "pathway_errorbar_table() abundance"
+  )
 
   if (!is.data.frame(daa_results_df)) {
     stop("'daa_results_df' must be a data frame")
@@ -134,11 +150,41 @@ pathway_errorbar_table <- function(abundance,
     # through the intersect+reorder step without us needing to track
     # indices by hand. Column name is prefixed to avoid colliding with
     # any user column.
-    metadata[[".pet_group"]] <- Group
+    group_key <- add_internal_metadata_column(
+      metadata,
+      Group,
+      prefix = ".ggpicrust2_errorbar_group"
+    )
+    metadata <- group_key$metadata
     aligned <- align_samples(abundance, metadata,
                              sample_col = sample_col, verbose = FALSE)
     abundance <- aligned$abundance
-    Group <- aligned$metadata[[".pet_group"]]
+    Group <- aligned$metadata[[group_key$column]]
+  } else if (!is.null(names(Group)) &&
+             length(names(Group)) == length(Group) &&
+             all(!is.na(names(Group))) &&
+             any(nzchar(names(Group)))) {
+    if (is.null(colnames(abundance))) {
+      stop("Group has sample names, but abundance has no column names to align against.",
+           call. = FALSE)
+    }
+    group_names <- names(Group)
+    if (any(!nzchar(group_names))) {
+      stop("Group names must be non-empty sample identifiers.", call. = FALSE)
+    }
+    if (anyDuplicated(group_names)) {
+      duplicated_names <- unique(group_names[duplicated(group_names)])
+      stop("Group names contain duplicated sample identifiers: ",
+           paste(utils::head(duplicated_names, 5), collapse = ", "),
+           call. = FALSE)
+    }
+    missing_group_samples <- setdiff(colnames(abundance), group_names)
+    if (length(missing_group_samples) > 0) {
+      stop("Group names do not cover abundance sample(s): ",
+           paste(utils::head(missing_group_samples, 5), collapse = ", "),
+           call. = FALSE)
+    }
+    Group <- Group[colnames(abundance)]
   }
 
   required_cols <- c("feature", "group1", "group2", "p_adjust")
@@ -147,6 +193,10 @@ pathway_errorbar_table <- function(abundance,
     stop("Missing required columns in daa_results_df: ",
          paste(missing_cols, collapse = ", "))
   }
+  validate_probability_threshold(p_values_threshold, "p_values_threshold")
+  validate_probability_values(daa_results_df$p_adjust,
+                              "p_adjust",
+                              "daa_results_df")
 
   if (length(Group) != ncol(abundance)) {
     stop("Length of Group (", length(Group),
@@ -154,8 +204,8 @@ pathway_errorbar_table <- function(abundance,
          ncol(abundance), ")")
   }
 
-	  # Validate single method and group pair
-	  validate_daa_results(daa_results_df)
+  # Validate single method and group pair
+  validate_daa_results(daa_results_df)
   if (ko_to_kegg && !"pathway_class" %in% colnames(daa_results_df)) {
     stop(
       "The 'pathway_class' column is missing but ko_to_kegg = TRUE. ",
@@ -198,6 +248,13 @@ pathway_errorbar_table <- function(abundance,
   # results instead of failing fast.
   group1_name <- daa_results_filtered_sub_df$group1[1]
   group2_name <- daa_results_filtered_sub_df$group2[1]
+  Group <- validate_group_vector_for_summary(
+    Group,
+    context = "Group",
+    sample_ids = colnames(abundance),
+    required_groups = c(group1_name, group2_name),
+    min_groups = 2
+  )
   
   # Calculate abundance statistics using the helper function.
   # Group is already confirmed (above) to be in the same order as
@@ -223,16 +280,24 @@ pathway_errorbar_table <- function(abundance,
   annotation_cols <- setdiff(colnames(daa_results_filtered_sub_df),
                              c(abundance_stats_cols, "method", "p_values"))
 
-  # Include p_adjust and annotation columns for merging
-  merge_cols <- c("feature", "p_adjust", annotation_cols)
-  merge_cols <- intersect(merge_cols, colnames(daa_results_filtered_sub_df))
-
-  # Merge with DAA results to include p-values and other information
-  result_table <- merge(
+  # Attach p-values and annotations through a strict one-to-one lookup.
+  # merge() sorts by the key before the explicit p-value ordering below,
+  # which silently changes DAA order whenever p-values are tied.
+  annotation_cols <- unique(c("p_adjust", annotation_cols))
+  annotation_cols <- intersect(annotation_cols,
+                               colnames(daa_results_filtered_sub_df))
+  annotation_index <- match(
+    abundance_stats$feature,
+    daa_results_filtered_sub_df$feature
+  )
+  if (anyNA(annotation_index)) {
+    stop("Internal error: abundance statistics could not be mapped back to DAA rows.",
+         call. = FALSE)
+  }
+  result_table <- cbind(
     abundance_stats,
-    daa_results_filtered_sub_df[, merge_cols, drop = FALSE],
-    by = "feature",
-    all.x = TRUE
+    daa_results_filtered_sub_df[annotation_index, annotation_cols,
+                                drop = FALSE]
   )
 
   # Reorder columns for better readability

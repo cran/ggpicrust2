@@ -16,19 +16,45 @@ compare_gsea_daa(
 
 \item{daa_results}{A data frame containing DAA results from the pathway_daa function}
 
-\item{plot_type}{A character string specifying the visualization type: "venn", "upset", or "scatter"}
+\item{plot_type}{A single character string specifying the visualization
+type: "venn", "upset", or "scatter"}
 
-\item{p_threshold}{A numeric value specifying the significance threshold}
+\item{p_threshold}{A numeric value specifying the significance threshold.
+Must be in the range (0, 1].}
 }
 \value{
 A list with two elements: \code{plot} (a ggplot2 object, or an
   UpSetR object when \code{plot_type = "upset"} and UpSetR is installed)
   and \code{results} (a named list with the overlap, GSEA-only, and
-  DAA-only pathway sets plus their counts).
+  DAA-only pathway sets plus their counts). For \code{plot_type = "scatter"},
+  \code{results$scatter_data} contains the merged score/effect-size table,
+  including \code{daa_log2_fold_change_aligned}.
 }
 \description{
 This function compares the results from Gene Set Enrichment Analysis (GSEA) and
 Differential Abundance Analysis (DAA) to identify similarities and differences.
+}
+\details{
+Venn and UpSet plots compare significant pathway sets with unique pathway
+IDs. Restrict inputs to the shared tested pathway universe for a method
+comparison; an untested pathway is not a non-significant result. Preserve
+each analysis's original multiple-testing adjustment. The scatter plot
+compares a GSEA score with a DAA effect size and requires one row
+per pathway in each input. If a result table contains multiple methods,
+contrasts, or group pairs for the same pathway, filter it to a single
+score/contrast context before using \code{plot_type = "scatter"}.
+For scatter plots, GSEA and DAA directions must be explicit. Preranked
+GSEA positive NES values represent \code{gsea_results$group1} versus
+\code{gsea_results$group2}, while DAA \code{log2_fold_change} values
+represent \code{daa_results$group2 / daa_results$group1}. The DAA effect
+size is therefore aligned to the GSEA-positive direction before plotting.
+For Venn and UpSet plots, if both inputs include \code{group1} and
+\code{group2}, each input must represent one comparable group pair. This
+prevents pathways found in different biological contrasts from being counted
+as method agreement. Direction metadata must be complete: an input may
+provide both columns or neither, but not only one of them. When neither method
+has significant pathways, Venn and UpSet requests return the same explicit
+zero-count summary plot.
 }
 \examples{
 \dontrun{
@@ -41,7 +67,7 @@ abundance_data <- as.data.frame(ko_abundance)
 rownames(abundance_data) <- abundance_data[, "#NAME"]
 abundance_data <- abundance_data[, -1]
 
-# Run GSEA analysis (using camera method - recommended)
+# Run the competitive camera test
 gsea_results <- pathway_gsea(
   abundance = abundance_data,
   metadata = metadata,
@@ -50,12 +76,18 @@ gsea_results <- pathway_gsea(
   method = "camera"
 )
 
-# Run DAA analysis
+# Test pathway abundance, not individual KO abundance.
+pathway_abundance <- ko2kegg_abundance(data = ko_abundance)
 daa_results <- pathway_daa(
-  abundance = abundance_data,
+  abundance = pathway_abundance,
   metadata = metadata,
-  group = "Environment"
+  group = "Environment",
+  daa_method = "LinDA"
 )
+
+common_ids <- intersect(gsea_results$pathway_id, daa_results$feature)
+gsea_results <- gsea_results[gsea_results$pathway_id \%in\% common_ids, ]
+daa_results <- daa_results[daa_results$feature \%in\% common_ids, ]
 
 # Compare results
 comparison <- compare_gsea_daa(

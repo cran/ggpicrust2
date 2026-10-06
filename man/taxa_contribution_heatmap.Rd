@@ -23,7 +23,9 @@ taxa_contribution_heatmap(
 \item{contrib_agg}{A data.frame from \code{\link{aggregate_taxa_contributions}}.}
 
 \item{annotation_data}{Optional data.frame from \code{\link{pathway_annotation}}
-for replacing function IDs with readable descriptions.}
+for replacing function IDs with readable descriptions. It must contain
+either \code{feature}/\code{description} or
+\code{pathway}/\code{pathway_name} columns.}
 
 \item{n_functions}{Integer. Number of functions to include. Default 20.}
 
@@ -31,9 +33,9 @@ for replacing function IDs with readable descriptions.}
 
 \item{cluster_cols}{Logical. Cluster columns (functions)? Default TRUE.}
 
-\item{clustering_method}{Character. Method for \code{hclust}. Default \code{"complete"}.}
+\item{clustering_method}{Character. Method for \code{hclust}. Default \code{"complete"}. Ward methods require \code{clustering_distance = "euclidean"}.}
 
-\item{clustering_distance}{Character. Distance metric. Default \code{"euclidean"}.}
+\item{clustering_distance}{Character. Distance metric. Default \code{"euclidean"}. Supported values are \code{"euclidean"}, \code{"maximum"}, \code{"manhattan"}, \code{"canberra"}, \code{"binary"}, and \code{"minkowski"}.}
 
 \item{low_color}{Character. Color for low values. Default \code{"#f7f7f7"}.}
 
@@ -51,6 +53,19 @@ A \code{ggplot2} or \code{patchwork} object.
 \description{
 Creates a heatmap showing mean taxa contributions across pathways/functions,
 with optional clustering and pathway annotations.
+}
+\details{
+The \code{sample}, \code{function_id}, and \code{taxon_label} columns must
+contain non-empty values without \code{NA}. These columns define plotting and
+aggregation groups, so missing identifiers would otherwise be dropped by R
+aggregation or shown as unlabeled categories.
+PICRUSt2 contribution outputs are sparse; combinations absent from
+\code{contrib_agg} are treated as zero when computing mean contribution
+across samples.
+If \code{annotation_data} contains multiple non-empty labels for the same
+plotted function ID, the function errors instead of silently choosing one
+label. Repeated rows with the same ID and same label are allowed, and label
+whitespace is normalized before comparison and display.
 }
 \examples{
 \donttest{

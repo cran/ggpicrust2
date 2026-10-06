@@ -1,7 +1,7 @@
 Package: ggpicrust2
 Type: Package
 Title: Make 'PICRUSt2' Output Analysis and Visualization Easier
-Version: 2.5.17
+Version: 2.5.19
 Author: Chen Yang [aut, cre],
   Liangliang Zhang [aut]
 Maintainer: Chen Yang <cafferychen7850@gmail.com>
@@ -11,7 +11,7 @@ Authors@R: c(
 Description: Provides a convenient way to analyze and visualize 'PICRUSt2' output with pre-defined plots and functions. Allows for generating statistical plots about microbiome functional predictions and offers customization options. Features a one-click option for creating publication-level plots, saving time and effort in producing professional-grade figures. Streamlines the 'PICRUSt2' analysis and visualization process. For more details, see Yang et al. (2023) <doi:10.1093/bioinformatics/btad470>.
 BugReports: https://github.com/cafferychen777/ggpicrust2/issues
 URL: https://github.com/cafferychen777/ggpicrust2,
-        https://cafferyang.com/ggpicrust2/
+        https://cafferychen777.github.io/ggpicrust2/
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
@@ -30,6 +30,6 @@ Config/testthat/edition: 3
 biocViews: Microbiome, Metagenomics, Software
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2026-06-05 16:21:06 UTC; apple
+Packaged: 2026-10-06 12:43:46 UTC; apple
 Repository: CRAN
-Date/Publication: 2026-06-05 16:50:02 UTC
+Date/Publication: 2026-10-06 18:20:02 UTC

@@ -28,24 +28,38 @@ knitr::opts_chunk$set(
 
 This vignette focuses on the general package workflow. For a deeper GSEA walkthrough, see the dedicated `gsea_analysis` vignette.
 
-## Installation
+## Installation and example data
+
+Install the package and the optional backends used by this tutorial:
 
 ```{r installation, eval = FALSE}
-# install.packages("devtools")
-devtools::install_github("cafferychen777/ggpicrust2")
+install.packages(c("ggpicrust2", "MicrobiomeStat", "BiocManager"))
+BiocManager::install(c("KEGGREST", "limma"))
+```
 
+```{r example-data, eval = FALSE}
 library(ggpicrust2)
 library(tibble)
+data("ko_abundance")
+data("metadata")
+alpha <- 0.05
 ```
+
+Both workflows below use the same data, LinDA method, and adjusted p-value
+threshold. LinDA accepts the continuous abundance estimates produced by
+`ko2kegg_abundance()`, but its default count-data winsorization rounds values
+inside MicrobiomeStat. In a direct `pathway_daa()` call, set
+`linda_winsor = FALSE` to preserve fractional values and
+`linda_adaptive = FALSE` for fixed pseudo-count handling. A fixed pseudo-count
+still depends on the units of the input when zeros are present.
+Count-based methods such as ALDEx2 require integer input and the package
+rounds non-integer input with a warning. Choose the
+method for its assumptions and your study design, not to obtain significance.
+KEGG pathway annotation requires internet access and `KEGGREST`.
 
 ## One-command workflow
 
-If you want a fast end-to-end run from abundance data to annotated differential abundance output, start with `ggpicrust2()`:
-
 ```{r one-command, eval = FALSE}
-data("ko_abundance")
-data("metadata")
-
 results <- ggpicrust2(
   data = ko_abundance,
   metadata = metadata,
@@ -55,23 +69,47 @@ results <- ggpicrust2(
   ko_to_kegg = TRUE,
   order = "pathway_class",
   p_values_bar = TRUE,
+  p_values_threshold = alpha,
   x_lab = "pathway_name"
 )
 
-# Access the main outputs
+# A method's plot is NULL when no pathways can be plotted.
 results[[1]]$plot
 head(results[[1]]$results)
 ```
 
-Use this route when you want a fast default analysis. Use the stepwise workflow below when you need more control over data preparation or visualization.
-
 ## Stepwise pathway workflow
+
+Run the installation and example-data setup above first. This workflow uses
+the same analysis settings as the one-command workflow.
 
 ### Convert KO abundance to KEGG pathway abundance
 
 ```{r ko-to-kegg, eval = FALSE}
 kegg_pathway_abundance <- ko2kegg_abundance(data = ko_abundance)
 head(kegg_pathway_abundance[, 1:3])
+```
+
+### Match group labels to sample identifiers
+
+`pathway_daa()`, `pathway_heatmap()`, and `pathway_pca()` accept `metadata`
+and a column name, such as `group = "Environment"`. In contrast,
+`pathway_errorbar()` has no metadata argument: its capitalized `Group`
+parameter requires one group label per abundance column, not a column name.
+
+The bundled metadata and abundance table have different sample orders.
+Name the group vector with sample IDs so that plotting aligns labels to the
+correct samples. For your own data, replace `sample_name` and `Environment`
+with your sample-ID and grouping columns. Do not pass an unnamed metadata
+column unless you have already verified its order against the abundance columns.
+
+```{r sample-groups, eval = FALSE}
+stopifnot(
+  !anyNA(metadata$sample_name),
+  !anyDuplicated(metadata$sample_name),
+  setequal(colnames(kegg_pathway_abundance), metadata$sample_name)
+)
+sample_groups <- setNames(metadata$Environment, metadata$sample_name)
 ```
 
 ### Run differential abundance analysis
@@ -81,7 +119,7 @@ daa_results <- pathway_daa(
   abundance = kegg_pathway_abundance,
   metadata = metadata,
   group = "Environment",
-  daa_method = "ALDEx2"
+  daa_method = "LinDA"
 )
 
 head(daa_results)
@@ -93,7 +131,8 @@ head(daa_results)
 annotated_daa <- pathway_annotation(
   pathway = "KO",
   daa_results_df = daa_results,
-  ko_to_kegg = TRUE
+  ko_to_kegg = TRUE,
+  p_adjust_threshold = alpha
 )
 
 head(annotated_daa)
@@ -101,17 +140,38 @@ head(annotated_daa)
 
 ### Visualize pathway-level results
 
+`ko_to_kegg = TRUE` is required here too: the rows are KEGG pathways and
+use `pathway_name` annotations. This flag does not reconvert the abundance
+matrix in the plotting function.
+
 ```{r errorbar, eval = FALSE}
-pathway_errorbar(
-  abundance = kegg_pathway_abundance,
-  daa_results_df = annotated_daa,
-  Group = "Environment"
-)
+sig_pathways <- unique(annotated_daa$feature[
+  !is.na(annotated_daa$p_adjust) & annotated_daa$p_adjust < alpha
+])
+
+p <- NULL
+if (length(sig_pathways) > 0) {
+  p <- pathway_errorbar(
+    abundance = kegg_pathway_abundance,
+    daa_results_df = annotated_daa,
+    Group = sample_groups,
+    ko_to_kegg = TRUE,
+    p_values_threshold = alpha,
+    order = "pathway_class",
+    x_lab = "pathway_name"
+  )
+} else {
+  message("No pathways pass the adjusted p-value threshold; skipping the error bar plot.")
+}
+p
 ```
 
-```{r heatmap-pca, eval = FALSE}
-sig_pathways <- annotated_daa$feature[annotated_daa$p_adjust < 0.05]
+No significant pathways is a valid analysis outcome. Keep the results table;
+do not increase the threshold or change methods just to produce a plot.
+Missing KEGG annotations can also prevent plotting even when significant
+results exist; check the annotation warnings separately.
 
+```{r heatmap-pca, eval = FALSE}
 if (length(sig_pathways) > 0) {
   pathway_heatmap(
     abundance = kegg_pathway_abundance[sig_pathways, , drop = FALSE],
@@ -127,78 +187,119 @@ pathway_pca(
 )
 ```
 
-## Taxa contribution workflow
+### Using ALDEx2 instead
 
-PICRUSt2 can output contribution files that explain which taxa are driving predicted functional shifts. `ggpicrust2` supports both gene-family-level and pathway-level contribution workflows.
+ALDEx2 is an optional Bioconductor dependency. For two groups it returns
+both Welch and Wilcoxon results, so select one test before annotation and
+plotting. Otherwise a pathway can occur twice with different p-values.
+Specify the test in advance. ALDEx2 uses Monte Carlo sampling, so set a seed
+for reproducibility; results can still differ across package versions.
 
-### Read PICRUSt2 contribution files
-
-```{r contrib-readers, eval = FALSE}
-# For pred_metagenome_contrib.tsv
-contrib_data <- read_contrib_file("pred_metagenome_contrib.tsv")
-
-# For path_abun_contrib.tsv.gz; PICRUSt2 pathway output commonly uses MetaCyc IDs.
-path_contrib_data <- read_pathway_contrib_file("path_abun_contrib.tsv.gz")
-
-# For pred_metagenome_strat.tsv
-strat_data <- read_strat_file("pred_metagenome_strat.tsv")
+```{r aldex2-alternative, eval = FALSE}
+# Install once with BiocManager::install("ALDEx2").
+set.seed(207)
+aldex_results <- pathway_daa(
+  abundance = kegg_pathway_abundance,
+  metadata = metadata,
+  group = "Environment",
+  daa_method = "ALDEx2"
+)
+daa_results <- aldex_results[
+  aldex_results$method == "ALDEx2_Welch's t test", , drop = FALSE
+]
 ```
 
-### Aggregate to a taxonomic level
+Then rerun the annotation and visualization steps with this `daa_results`.
+For more than two groups or multiple contrasts, inspect `method`, `group1`,
+and `group2` and select the supported test/contrast explicitly. An ALDEx2
+run can have no adjusted p-values below 0.05 even when LinDA finds some;
+these are different statistical procedures, not equivalent plotting modes.
 
-```{r contrib-aggregate, eval = FALSE}
-taxa_contrib <- aggregate_taxa_contributions(
-  contrib_data = contrib_data,
-  taxonomy = your_taxonomy_table,
-  tax_level = "Genus",
-  top_n = 10,
-  daa_results_df = daa_results
+## Taxa contribution workflow
+
+PICRUSt2 contribution files attribute predicted functional abundance to taxa. `ggpicrust2` supports both gene-family-level and pathway-level contribution workflows.
+
+### Run a synthetic contribution example
+
+This small example illustrates input schemas and aggregation. It is not a
+biological result, and its sample IDs are separate from the bundled KO dataset.
+
+```{r contrib-example, eval = FALSE}
+contrib_input <- expand.grid(
+  sample = paste0("S", 1:4),
+  function_id = c("K00001", "K00002"),
+  taxon = c("ASV1", "ASV2"),
+  stringsAsFactors = FALSE
 )
-
+contrib_input$taxon_function_abun <- seq_len(nrow(contrib_input))
+contrib_data <- read_contrib_file(data = contrib_input)
+contrib_metadata <- data.frame(
+  sample_name = paste0("S", 1:4),
+  Environment = rep(c("Control", "Treatment"), each = 2)
+)
+taxonomy <- data.frame(
+  ASV = c("ASV1", "ASV2"),
+  Genus = c("ExampleGenusA", "ExampleGenusB")
+)
+taxa_contrib <- aggregate_taxa_contributions(
+  contrib_data, taxonomy = taxonomy, tax_level = "Genus", top_n = 2
+)
 head(taxa_contrib)
 ```
 
-`aggregate_taxa_contributions()` accepts either:
+The aggregation sums the selected contribution column. By default it prefers
+`norm_taxon_function_contrib` when supplied; this example supplies raw
+`taxon_function_abun` only. A percentage bar subsequently normalizes within
+each sample/function, so its heights describe the taxonomic composition of
+that function, not a between-function abundance comparison.
 
-- normalized contribution data from `read_contrib_file()`
-- pathway-level contribution data from `read_pathway_contrib_file()`
-- stratified abundance data from `read_strat_file()`
-
-Use `daa_results_df` or `pathway_ids` when you want to focus only on pathways that were significant in your pathway-level analysis.
-
-When you already have pathway-level contribution data and do not want to run differential abundance analysis, omit `daa_results_df` and aggregate directly. For PICRUSt2 pathway contribution output, use matching MetaCyc annotations rather than KEGG pathway annotations.
-
-```{r pathway-contrib-no-daa, eval = FALSE}
-path_taxa_contrib <- aggregate_taxa_contributions(
-  contrib_data = path_contrib_data,
-  taxonomy = your_taxonomy_table,
-  tax_level = "Genus",
-  top_n = 10
+```{r contrib-plots, eval = FALSE}
+taxa_contribution_bar(
+  contrib_agg = taxa_contrib,
+  metadata = contrib_metadata,
+  group = "Environment",
+  facet_by = "function"
 )
+taxa_contribution_heatmap(contrib_agg = taxa_contrib, n_functions = 2)
+```
 
+### Read your own PICRUSt2 files
+
+For real data, replace the synthetic input with one of the readers below and
+use metadata and taxonomy for those same samples and taxa:
+
+```r
+# KO/gene-family contributions:
+# contrib_data <- read_contrib_file("pred_metagenome_contrib.tsv")
+# Pathway contributions (often MetaCyc):
+# contrib_data <- read_pathway_contrib_file("path_abun_contrib.tsv.gz")
+# Wide stratified abundance:
+# contrib_data <- read_strat_file("pred_metagenome_strat.tsv")
+```
+
+When optional `daa_results_df` or `pathway_ids` filters contain KEGG pathway IDs
+and the contribution table is KO-level, the function expands those pathway IDs
+to KO members and retains matching KO rows. It does not turn KO contributions
+into pathway contributions. The output `function_id` remains a KO identifier.
+For pathway-level MetaCyc contributions, matching MetaCyc IDs are filtered
+directly. Do not interpret a member-KO filter as independent evidence that a
+taxon drives a reconstructed pathway's activity.
+
+For pathway-level data, use matching pathway annotations. For example:
+
+```{r pathway-contrib-example, eval = FALSE}
+path_input <- contrib_input
+path_input$function_id <- ifelse(path_input$function_id == "K00001",
+                                  "GLYCOLYSIS", "PWY-5484")
+path_data <- read_pathway_contrib_file(data = path_input)
+path_taxa_contrib <- aggregate_taxa_contributions(
+  path_data, taxonomy = taxonomy, tax_level = "Genus", top_n = 2
+)
 pathway_annotation_df <- pathway_annotation(
   data = data.frame(function_id = unique(path_taxa_contrib$function_id)),
   pathway = "MetaCyc"
 )
 ```
-
-### Visualize taxa-level drivers
-
-```{r contrib-plots, eval = FALSE}
-taxa_contribution_bar(
-  contrib_agg = taxa_contrib,
-  metadata = metadata,
-  group = "Environment",
-  facet_by = "function"
-)
-
-taxa_contribution_heatmap(
-  contrib_agg = taxa_contrib,
-  n_functions = 20
-)
-```
-
-This step is useful when pathway-level significance is not enough and you need to identify which taxa are contributing to the change.
 
 ## GSEA workflow
 

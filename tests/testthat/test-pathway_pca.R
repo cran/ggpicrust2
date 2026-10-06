@@ -29,7 +29,7 @@ test_that("pathway_pca works with custom colors", {
 })
 
 test_that("pathway_pca works with multiple groups", {
-  data <- create_pca_test_data(n_groups = 3)
+  data <- create_pca_test_data(n_samples = 12, n_groups = 3)
   result <- pathway_pca(data$abundance, data$metadata, "group")
   expect_s3_class(result, "ggplot")
 })
@@ -51,11 +51,142 @@ test_that("pathway_pca validates inputs", {
   expect_error(pathway_pca(data$abundance, data$metadata, "group"), "NA|missing")
 })
 
+test_that("pathway_pca accepts finite zero-sum sample columns", {
+  abundance <- matrix(
+    c(
+      -1, 1, 2, 4,
+       0, 2, 3, 5,
+       1, 3, 4, 6
+    ),
+    nrow = 3,
+    byrow = TRUE,
+    dimnames = list(paste0("Pathway", 1:3), paste0("Sample", 1:4))
+  )
+  metadata <- data.frame(
+    sample_name = colnames(abundance),
+    group = c("A", "A", "B", "B"),
+    stringsAsFactors = FALSE
+  )
+
+  expect_warning(
+    p <- pathway_pca(abundance, metadata, "group", show_marginal = FALSE),
+    "Skipping PCA confidence ellipse"
+  )
+  expect_s3_class(p, "ggplot")
+})
+
+test_that("pathway_pca keeps zero-variance sample profiles as observations", {
+  abundance <- matrix(
+    c(
+      5, 5, 1, 2, 3,
+      5, 5, 2, 3, 4,
+      5, 5, 3, 4, 5
+    ),
+    nrow = 3,
+    byrow = TRUE,
+    dimnames = list(paste0("Pathway", 1:3), paste0("Sample", 1:5))
+  )
+  metadata <- data.frame(
+    sample_name = colnames(abundance),
+    group = c("A", "A", "B", "B", "B"),
+    stringsAsFactors = FALSE
+  )
+
+  expect_warning(
+    p <- pathway_pca(abundance, metadata, "group", show_marginal = FALSE),
+    "fewer than 4 samples: A=2, B=3"
+  )
+  expect_s3_class(p, "ggplot")
+  expect_equal(nrow(p$data), ncol(abundance))
+  expect_setequal(as.character(p$data$Group), c("A", "B"))
+})
+
+test_that("pathway_pca skips confidence ellipses for groups with fewer than four samples", {
+  abundance <- matrix(
+    c(
+      1, 2, 3, 4, 5, 6,
+      2, 4, 6, 8, 10, 13,
+      1, 3, 5, 7, 9, 8
+    ),
+    nrow = 3,
+    byrow = TRUE,
+    dimnames = list(paste0("Pathway", 1:3), paste0("Sample", 1:6))
+  )
+  metadata <- data.frame(
+    sample_name = colnames(abundance),
+    group = c("A", "A", "B", "B", "B", "B"),
+    stringsAsFactors = FALSE
+  )
+
+  expect_warning(
+    p <- pathway_pca(abundance, metadata, "group", show_marginal = FALSE),
+    "fewer than 4 samples: A=2"
+  )
+  expect_s3_class(p, "ggplot")
+  ellipse_layers <- vapply(
+    p$layers,
+    function(layer) inherits(layer$stat, "StatEllipse"),
+    logical(1)
+  )
+  expect_equal(sum(ellipse_layers), 1)
+  expect_true(all(as.character(p$layers[[which(ellipse_layers)]]$data$Group) == "B"))
+})
+
+test_that("pathway_pca rejects missing group labels after sample alignment", {
+  abundance <- matrix(
+    c(
+      1, 2, 3, 4,
+      2, 3, 4, 5,
+      3, 4, 5, 6
+    ),
+    nrow = 3,
+    byrow = TRUE,
+    dimnames = list(paste0("Pathway", 1:3), paste0("Sample", 1:4))
+  )
+  metadata <- data.frame(
+    sample_name = colnames(abundance),
+    group = c("A", "A", "B", NA),
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    pathway_pca(abundance, metadata, "group", show_marginal = FALSE),
+    "non-missing, non-empty group labels.*Sample4"
+  )
+})
+
 test_that("pathway_pca throws error with wrong color count", {
   data <- create_pca_test_data()
   expect_error(
     pathway_pca(data$abundance, data$metadata, "group", colors = c("red", "blue", "green")),
     "Number of colors"
+  )
+})
+
+test_that("pathway_pca maps named colors by exact group identity", {
+  data <- create_pca_test_data()
+
+  expect_error(
+    pathway_pca(
+      data$abundance,
+      data$metadata,
+      "group",
+      colors = c(Group1 = "red", typo = "blue"),
+      show_marginal = FALSE
+    ),
+    "must exactly match categorical levels"
+  )
+
+  p <- pathway_pca(
+    data$abundance,
+    data$metadata,
+    "group",
+    colors = c(Group2 = "blue", Group1 = "red"),
+    show_marginal = FALSE
+  )
+  expect_identical(
+    unname(p$scales$get_scales("colour")$palette(2)),
+    c("red", "blue")
   )
 })
 
@@ -67,6 +198,41 @@ test_that("pathway_pca show_marginal parameter works", {
 
   expect_s3_class(result_with, "ggplot")
   expect_s3_class(result_without, "ggplot")
+})
+
+test_that("pathway_pca omits singleton groups from marginal densities", {
+  data <- create_pca_test_data(n_pathways = 4, n_samples = 3, n_groups = 2)
+  data$metadata$group <- factor(c("A", "A", "B"))
+  warnings <- character(0)
+
+  p <- withCallingHandlers(
+    pathway_pca(data$abundance, data$metadata, "group"),
+    warning = function(w) {
+      warnings <<- c(warnings, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_true(any(grepl("Skipping PCA marginal density.*B=1", warnings)))
+  expect_s3_class(p, "ggplot")
+  expect_warning(ggplot2::ggplot_build(p), NA)
+})
+
+test_that("pathway_pca returns the scatter plot when no density is estimable", {
+  data <- create_pca_test_data(n_pathways = 4, n_samples = 3, n_groups = 3)
+  warnings <- character(0)
+
+  p <- withCallingHandlers(
+    pathway_pca(data$abundance, data$metadata, "group"),
+    warning = function(w) {
+      warnings <<- c(warnings, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_true(any(grepl("Skipping PCA marginal density", warnings)))
+  expect_equal(nrow(p$data), 3)
+  expect_warning(ggplot2::ggplot_build(p), NA)
 })
 
 # Regression: the marginal density panels used to attach
@@ -81,4 +247,55 @@ test_that("pathway_pca marginal density uses a continuous y scale", {
   expect_true(grepl("scale_y_continuous\\(", body_src))
   # And the discrete scale must be gone from the density construction.
   expect_false(grepl("scale_y_discrete\\(", body_src))
+})
+
+test_that("pathway_pca isolates plotting columns from metadata names", {
+  data <- create_pca_test_data(n_samples = 8)
+  names(data$metadata)[names(data$metadata) == "group"] <- "PC1"
+
+  p <- pathway_pca(
+    data$abundance,
+    data$metadata,
+    "PC1",
+    show_marginal = FALSE
+  )
+  expect_s3_class(p, "ggplot")
+  expect_named(p$data, c("PC1", "PC2", "Group"), ignore.order = FALSE)
+  expect_setequal(as.character(p$data$Group), c("Group1", "Group2"))
+  expect_error(ggplot2::ggplot_build(p), NA)
+})
+
+test_that("pathway_pca preserves a group column named .sample_id", {
+  data <- create_pca_test_data(n_samples = 8)
+  metadata <- data.frame(
+    .sample_id = as.character(data$metadata$group),
+    row.names = colnames(data$abundance),
+    check.names = FALSE
+  )
+
+  p <- pathway_pca(
+    data$abundance,
+    metadata,
+    group = ".sample_id",
+    show_marginal = FALSE
+  )
+
+  expect_s3_class(p, "ggplot")
+  expect_setequal(as.character(p$data$Group), c("Group1", "Group2"))
+})
+
+test_that("pathway_pca generates complete default palettes beyond 20 groups", {
+  data <- create_pca_test_data(n_pathways = 3, n_samples = 21, n_groups = 21)
+
+  p <- suppressWarnings(pathway_pca(
+    data$abundance,
+    data$metadata,
+    "group",
+    show_marginal = FALSE
+  ))
+
+  scale <- p$scales$get_scales("colour")
+  palette <- scale$palette(21)
+  expect_length(palette, 21)
+  expect_false(anyNA(palette))
 })

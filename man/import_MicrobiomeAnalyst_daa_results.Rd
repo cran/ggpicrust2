@@ -14,22 +14,33 @@ import_MicrobiomeAnalyst_daa_results(
 \arguments{
 \item{file_path}{a character string specifying the path to the CSV file containing the DAA results from MicrobiomeAnalyst. If this parameter is NULL and no data frame is provided, an error will be thrown. Default is NULL.}
 
-\item{data}{a data frame containing the DAA results from MicrobiomeAnalyst. If this parameter is NULL and no file path is provided, an error will be thrown. Default is NULL.}
+\item{data}{a data frame containing the DAA results from MicrobiomeAnalyst. Feature identifiers can be stored in a feature/name column or in non-default row names. P-value and adjusted p-value columns are detected by semantic names such as \code{Pvalues} and \code{FDR}; \code{Statistics} and fold-change columns are optional. If this parameter is NULL and no file path is provided, an error will be thrown. Default is NULL.}
 
-\item{method}{a character string specifying the method used for the DAA. This will be added as a new column in the returned data frame. Default is "MicrobiomeAnalyst".}
+\item{method}{a single non-empty character string specifying the method used for the DAA. This will be added as a new column in the returned data frame. Default is "MicrobiomeAnalyst".}
 
-\item{group_levels}{a character vector specifying the group levels for the DAA. This will be added as new columns in the returned data frame. Default is c("control", "treatment").}
+\item{group_levels}{a character vector specifying at least two unique group levels for the DAA. These values will be added as new columns in the returned data frame. Default is c("control", "treatment").}
 }
 \value{
-a data frame containing the DAA results from MicrobiomeAnalyst with additional columns for the method and group levels.
+a data frame containing the DAA results from MicrobiomeAnalyst with
+  validated \code{feature}, \code{p_values}, and \code{p_adjust} columns,
+  optional \code{Statistics} and \code{log2_fold_change} columns when present
+  in the imported result, plus additional columns for the method and group
+  levels.
 }
 \description{
 This function imports DAA results from an external platform such as MicrobiomeAnalyst. It can be used to compare the results obtained from different platforms.
 }
 \examples{
-\dontrun{
-# Assuming you have a CSV file named "DAA_results.csv" in your current directory
-daa_results <- import_MicrobiomeAnalyst_daa_results(file_path = "DAA_results.csv")
-}
+# Synthetic export with explicit feature and probability columns.
+exported <- data.frame(
+  feature = c("K00001", "K00002"),
+  Pvalues = c(0.01, 0.20), FDR = c(0.02, 0.20)
+)
+daa_results <- import_MicrobiomeAnalyst_daa_results(data = exported)
 
+# The same table can be read from a CSV file.
+export_file <- tempfile(fileext = ".csv")
+utils::write.csv(exported, export_file, row.names = FALSE)
+import_MicrobiomeAnalyst_daa_results(file_path = export_file)
+unlink(export_file)
 }

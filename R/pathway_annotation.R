@@ -96,6 +96,8 @@ rewrite_kegg_pathway_organism <- function(result, organism) {
 #' @return Result or error
 #' @noRd
 with_retry <- function(expr, max_attempts = getOption("ggpicrust2.max_retries", 3)) {
+  validate_count_parameter(max_attempts, "max_attempts")
+
   for (attempt in seq_len(max_attempts)) {
     result <- tryCatch({
       if (is.function(expr)) expr() else if (is.expression(expr)) eval(expr) else expr
@@ -161,13 +163,28 @@ process_kegg_annotations <- function(df, organism = NULL, p_adjust_threshold = 0
   if (nrow(df) == 0) {
     stop("Empty data frame provided for KEGG annotation")
   }
+  validate_dataframe(df,
+                     required_cols = c("feature", "p_adjust"),
+                     param_name = "df")
+  validate_probability_threshold(p_adjust_threshold, "p_adjust_threshold")
+  validate_probability_values(df$p_adjust, "p_adjust", "df")
 
-  # Filter for significant pathways
+  # Filter for significant pathways. Keep the original row index so that
+  # annotation merge-back remains row-specific when the same feature appears
+  # multiple times (e.g. different DAA methods or contrasts).
+  row_id_col <- ".ggpicrust2_annotation_row_id"
+  while (row_id_col %in% colnames(df)) {
+    row_id_col <- paste0(row_id_col, "_")
+  }
+  df[[row_id_col]] <- seq_len(nrow(df))
   filtered_df <- df[which(df$p_adjust < p_adjust_threshold), ]
 
   # Handle case when no significant pathways are found
   if (nrow(filtered_df) == 0) {
-    min_p <- min(df$p_adjust, na.rm = TRUE)
+    min_p <- suppressWarnings(min(df$p_adjust, na.rm = TRUE))
+    if (!is.finite(min_p)) {
+      min_p <- NA_real_
+    }
 
     warning(
       "\n================================================================================\n",
@@ -197,6 +214,7 @@ process_kegg_annotations <- function(df, organism = NULL, p_adjust_threshold = 0
     # Return original data with empty annotation columns for compatibility
     new_cols <- c("pathway_name", "pathway_description", "pathway_class", "pathway_map")
     df[new_cols] <- NA_character_
+    df[[row_id_col]] <- NULL
 
     log_message("No significant pathways found. Returning data with empty annotation columns.", "WARN")
     return(df)
@@ -317,7 +335,7 @@ process_kegg_annotations <- function(df, organism = NULL, p_adjust_threshold = 0
       log_message(sprintf("KO IDs not found: %s", paste(not_found_ids, collapse = ", ")), "WARN")
     } else {
       log_message(sprintf("First 10 KO IDs not found: %s...", 
-                          paste(not_found_ids[1:10], collapse = ", ")), "WARN")
+                          paste(utils::head(not_found_ids, 10), collapse = ", ")), "WARN")
     }
   }
   
@@ -338,7 +356,7 @@ process_kegg_annotations <- function(df, organism = NULL, p_adjust_threshold = 0
       ko_list <- if (length(not_found_ids) <= 10) {
         paste("  ", paste(not_found_ids, collapse = ", "))
       } else {
-        paste("  ", paste(not_found_ids[1:10], collapse = ", "), "...")
+        paste("  ", paste(utils::head(not_found_ids, 10), collapse = ", "), "...")
       }
 
       error_msg <- paste0(error_msg,
@@ -357,7 +375,7 @@ process_kegg_annotations <- function(df, organism = NULL, p_adjust_threshold = 0
       ko_list <- if (length(error_ids) <= 10) {
         paste("  ", paste(error_ids, collapse = ", "))
       } else {
-        paste("  ", paste(error_ids[1:10], collapse = ", "), "...")
+        paste("  ", paste(utils::head(error_ids, 10), collapse = ", "), "...")
       }
 
       error_msg <- paste0(error_msg,
@@ -395,19 +413,18 @@ process_kegg_annotations <- function(df, organism = NULL, p_adjust_threshold = 0
   }
 
   # Merge annotations back onto the full input so the return value keeps
-  # every row of `daa_results_df`. Previously we returned only the
-  # p_adjust < threshold subset, which silently dropped non-significant
-  # features that downstream code (e.g. ggpicrust2()'s plot_result_list$
-  # daa_results_df and user post-hoc analyses) expected to still be there.
-  # Non-significant rows get NA annotation columns, mirroring the
-  # no-significant-pathways branch above.
+  # every row of `daa_results_df`. The merge key is the original row index,
+  # not the feature ID: the same feature can appear in multiple DAA rows
+  # (method-specific tests, group pairs, or contrasts), and only the rows
+  # that passed the p_adjust threshold should receive KEGG annotations.
   new_cols <- c("pathway_name", "pathway_description", "pathway_class", "pathway_map")
   df[new_cols] <- NA_character_
-  match_idx <- match(df$feature, filtered_df$feature)
+  match_idx <- match(df[[row_id_col]], filtered_df[[row_id_col]])
   populated <- !is.na(match_idx)
   for (col in new_cols) {
     df[populated, col] <- filtered_df[[col]][match_idx[populated]]
   }
+  df[[row_id_col]] <- NULL
 
   df
 }
@@ -495,7 +512,9 @@ annotate_pathways <- function(data, pathway_type, ref_data) {
 #' @description
 #' This function serves two main purposes:
 #' 1. Annotating pathway information from PICRUSt2 output files or data frames.
-#' 2. Annotating pathway information from the output of `pathway_daa` function, and converting KO abundance to KEGG pathway abundance when `ko_to_kegg` is set to TRUE.
+#' 2. Adding annotations to existing `pathway_daa` result rows. This function
+#' does not aggregate KO abundance, change feature identifiers, or rerun testing.
+#' Use `ko2kegg_abundance()` before DAA when KEGG pathways are the analysis unit.
 #'
 #' **Important**: When `ko_to_kegg = TRUE`, this function automatically filters pathways by
 #' `p_adjust < p_adjust_threshold`. If no pathways meet this criterion, the function returns
@@ -510,20 +529,25 @@ annotate_pathways <- function(data, pathway_type, ref_data) {
 #' @param pathway A character string, the type of pathway to annotate. Options are "KO", "EC", "MetaCyc", or "KEGG".
 #' @param daa_results_df A data frame, the output from `pathway_daa` function. When `ko_to_kegg = TRUE`,
 #'   must contain columns: feature, p_values, p_adjust, and method.
-#' @param ko_to_kegg A logical, decide if convert KO abundance to KEGG pathway abundance. Default is FALSE.
-#'   Set to TRUE when using the function for the second use case. When TRUE, queries KEGG database for
-#'   pathway annotations (requires internet connection) and filters for significant pathways.
+#' @param ko_to_kegg Logical or logical-like string selecting online KEGG
+#'   annotation for DAA results. Use TRUE for KEGG pathway rows already
+#'   obtained by KO-to-pathway aggregation and testing. This flag does not
+#'   convert abundance or turn KO-level p-values into pathway-level p-values.
+#'   Default FALSE uses local reference annotations. TRUE requires internet
+#'   access and annotates only rows below the significance threshold.
 #' @param organism A character string specifying the KEGG organism code (e.g., 'hsa' for human, 'eco' for E. coli).
 #'   Default is NULL, which retrieves generic KO information not specific to any organism. Only used when ko_to_kegg is TRUE.
 #' @param p_adjust_threshold A numeric value specifying the significance threshold for filtering
 #'   pathways when `ko_to_kegg = TRUE`. Only pathways with `p_adjust < p_adjust_threshold` will be
-#'   annotated via KEGG API. Default is 0.05. Ignored when `ko_to_kegg = FALSE`.
+#'   annotated via KEGG API. Default is 0.05. Must be in the range (0, 1].
+#'   Ignored when `ko_to_kegg = FALSE`.
 #'
 #' @return A data frame with annotated pathway information.
 #'
 #' If using the function for the first use case (file input), the output data frame will include:
 #' \itemize{
-#'   \item \code{id}: The pathway ID.
+#'   \item The input feature-ID column (for example \code{#NAME} or
+#'   \code{function_id}); existing identifiers are preserved.
 #'   \item \code{description}: The description of the pathway.
 #'   \item \code{sample1, sample2, ...}: Abundance values for each sample.
 #' }
@@ -547,19 +571,23 @@ annotate_pathways <- function(data, pathway_type, ref_data) {
 #' using the \code{organism} parameter.
 #'
 #' @examples
+#' # Annotate KO identifiers using the bundled reference, without changing abundance.
+#' data("ko_abundance")
+#' annotated_abundance <- pathway_annotation(data = ko_abundance, pathway = "KO")
+#' head(annotated_abundance[, c("#NAME", "description")])
+#'
 #' \dontrun{
-#' # Example 1: Annotate pathways from PICRUSt2 output file
-#' pathway_annotation(file = "path/to/picrust2_output.tsv",
-#'                               pathway = "KO")
-#' }
-#' 
-#' \dontrun{
-#' # Example 2: Annotate pathways from pathway_daa output
-#' # Assuming you have daa_results from pathway_daa function
-#' daa_results <- pathway_daa(abundance, metadata, group = "Group")
-#' annotated_results <- pathway_annotation(pathway = "KO",
-#'                               daa_results_df = daa_results,
-#'                               ko_to_kegg = FALSE)
+#' # Annotate DAA results at their existing feature level.
+#' data("metadata")
+#' daa_results <- pathway_daa(
+#'   abundance = ko_abundance, metadata = metadata,
+#'   group = "Environment", daa_method = "LinDA"
+#' )
+#' annotated_results <- pathway_annotation(
+#'   pathway = "KO", daa_results_df = daa_results, ko_to_kegg = FALSE
+#' )
+#' # For KEGG pathway results, first aggregate with ko2kegg_abundance(),
+#' # test those pathway rows, then use ko_to_kegg = TRUE for online annotation.
 #' }
 #' @export
 pathway_annotation <- function(file = NULL,
@@ -569,6 +597,8 @@ pathway_annotation <- function(file = NULL,
                              ko_to_kegg = FALSE,
                              organism = NULL,
                              p_adjust_threshold = 0.05) {
+  validate_probability_threshold(p_adjust_threshold, "p_adjust_threshold")
+  ko_to_kegg <- normalize_logical_flag(ko_to_kegg, "ko_to_kegg")
   
   # Input validation
   if (is.null(file) && is.null(data) && is.null(daa_results_df)) {
@@ -647,6 +677,17 @@ pathway_annotation <- function(file = NULL,
       ref_data <- load_reference_data(pathway)
       return(annotate_pathways(daa_results_df, pathway, ref_data))
     } else {
+      if (!is.null(organism) &&
+          (!is.character(organism) || length(organism) != 1 ||
+           is.na(organism) || !nzchar(trimws(organism)))) {
+        stop(
+          "'organism' must be NULL or a single non-empty KEGG organism code.",
+          call. = FALSE
+        )
+      }
+      if (!is.null(organism)) {
+        organism <- trimws(organism)
+      }
       message("KO to KEGG is set to TRUE. Proceeding with KEGG pathway annotations...")
       if (!is.null(organism)) {
         message("Using organism code: ", organism, " for species-specific pathway information.")
@@ -696,7 +737,9 @@ normalize_annotation_data <- function(data) {
 #' @param field The name of the field to extract from the list
 #' @param index The index position to extract from the field. Default is 1
 #'
-#' @return The extracted element if successful, NA if extraction fails
+#' @return A single character value if successful, otherwise
+#'   \code{NA_character_} when the field is absent, empty, or shorter than
+#'   \code{index}.
 #'
 #' @examples
 #' # Create a sample list
@@ -712,14 +755,30 @@ normalize_annotation_data <- function(data) {
 #' safe_extract(my_list, "c", 1)
 #' @export
 safe_extract <- function(list, field, index = 1) {
+  if (!is.null(list) && !is.list(list)) {
+    stop("'list' must be NULL or a list.", call. = FALSE)
+  }
+  if (!is.character(field) || length(field) != 1 || is.na(field) ||
+      !nzchar(trimws(field))) {
+    stop("'field' must be a single non-empty character string.",
+         call. = FALSE)
+  }
+  validate_count_parameter(index, "index")
+
+  if (is.null(list) || !field %in% names(list)) {
+    return(NA_character_)
+  }
+  values <- list[[field]]
+  if (is.null(values) || length(values) < index) {
+    return(NA_character_)
+  }
+
   tryCatch({
-    if (is.null(list) || !field %in% names(list) || is.null(list[[field]]) || length(list[[field]]) == 0) {
+    extracted <- as.character(values[index])
+    if (length(extracted) == 0 || is.na(extracted[1])) {
       NA_character_
     } else {
-      as.character(list[[field]][index])
+      extracted[1]
     }
-  }, error = function(e) {
-    message(paste("Error in safe_extract:", e$message))
-    NA_character_
-  })
+  }, error = function(e) NA_character_)
 }

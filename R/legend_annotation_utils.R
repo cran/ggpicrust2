@@ -7,6 +7,32 @@
 #' @name legend_annotation_utils
 NULL
 
+validate_significance_inputs <- function(p_values,
+                                         thresholds,
+                                         labels,
+                                         label_name = "symbols") {
+  validate_probability_values(p_values, "p_values", "p_values")
+  if (!is.numeric(thresholds) || anyNA(thresholds) ||
+      any(!is.finite(thresholds)) ||
+      any(thresholds <= 0 | thresholds > 1)) {
+    stop("thresholds must contain finite numeric values in the range (0, 1].",
+         call. = FALSE)
+  }
+  if (anyDuplicated(thresholds)) {
+    stop("thresholds must not contain duplicate values.", call. = FALSE)
+  }
+  if (!is.character(labels) || anyNA(labels)) {
+    stop(label_name, " must be a character vector without NA values.",
+         call. = FALSE)
+  }
+  if (length(thresholds) != length(labels)) {
+    stop("thresholds and ", label_name, " must have the same length",
+         call. = FALSE)
+  }
+
+  invisible(TRUE)
+}
+
 #' Smart P-value Formatting
 #'
 #' @param p_values Numeric vector of p-values
@@ -22,12 +48,10 @@ format_pvalue_smart <- function(p_values,
                                thresholds = c(0.001, 0.01, 0.05),
                                star_symbols = c("***", "**", "*")) {
   
-  # Input validation
-  if (!is.numeric(p_values)) {
-    stop("p_values must be numeric")
-  }
-  
   format <- match.arg(format, c("numeric", "scientific", "smart", "stars_only", "combined"))
+  stars <- normalize_logical_flag(stars, "stars")
+  validate_significance_inputs(p_values, thresholds, star_symbols,
+                               label_name = "star_symbols")
   
   # Base formatting
   formatted <- switch(format,
@@ -71,19 +95,19 @@ format_pvalue_smart <- function(p_values,
 get_significance_stars <- function(p_values, 
                                  thresholds = c(0.001, 0.01, 0.05),
                                  symbols = c("***", "**", "*")) {
-  
-  if (length(thresholds) != length(symbols)) {
-    stop("thresholds and symbols must have the same length")
-  }
+  validate_significance_inputs(p_values, thresholds, symbols,
+                               label_name = "symbols")
   
   stars <- character(length(p_values))
 
-  # Iterate from least to most significant threshold so that more
-  # significant assignments overwrite less significant ones.
+  # Assign from the largest to the smallest threshold so that more
+  # significant assignments overwrite less significant ones, regardless of
+  # the order in which threshold-label pairs were supplied.
   # e.g. p=0.0001 matches all three thresholds (0.05, 0.01, 0.001)
   # but should get "***" (the last overwrite), not "*" (the first).
-  for (i in rev(seq_along(thresholds))) {
-    stars[p_values < thresholds[i]] <- symbols[i]
+  assignment_order <- order(thresholds, decreasing = TRUE)
+  for (i in assignment_order) {
+    stars[!is.na(p_values) & p_values < thresholds[i]] <- symbols[i]
   }
   
   return(stars)
@@ -101,17 +125,22 @@ get_significance_colors <- function(p_values,
                                   thresholds = c(0.001, 0.01, 0.05),
                                   colors = c("#d73027", "#fc8d59", "#fee08b"),
                                   default_color = "#999999") {
-  
-  if (length(thresholds) != length(colors)) {
-    stop("thresholds and colors must have the same length")
+  validate_significance_inputs(p_values, thresholds, colors,
+                               label_name = "colors")
+  if (!is.character(default_color) || length(default_color) != 1 ||
+      is.na(default_color)) {
+    stop("default_color must be a single character value.", call. = FALSE)
   }
+  validate_color_values(colors, "colors")
+  validate_color_values(default_color, "default_color", expected_length = 1)
   
   result_colors <- rep(default_color, length(p_values))
 
-  # Same reverse-iteration logic as get_significance_stars(): process
-  # from least to most significant so the tightest matching threshold wins.
-  for (i in rev(seq_along(thresholds))) {
-    result_colors[p_values < thresholds[i]] <- colors[i]
+  # Process threshold-color pairs from largest to smallest so the tightest
+  # matching threshold wins independently of input order.
+  assignment_order <- order(thresholds, decreasing = TRUE)
+  for (i in assignment_order) {
+    result_colors[!is.na(p_values) & p_values < thresholds[i]] <- colors[i]
   }
   
   return(result_colors)
@@ -149,6 +178,25 @@ create_legend_theme <- function(position = "top",
   # Validate inputs
   position <- match.arg(position, c("top", "bottom", "left", "right", "none"))
   box_just <- match.arg(box_just, c("center", "top", "bottom", "left", "right"))
+  validate_positive_number(title_size, "title_size")
+  validate_positive_number(text_size, "text_size")
+  validate_positive_number(key_size, "key_size")
+  if (!is.null(key_width)) {
+    validate_positive_number(key_width, "key_width")
+  }
+  if (!is.null(key_height)) {
+    validate_positive_number(key_height, "key_height")
+  }
+  if (!is.null(ncol)) {
+    validate_count_parameter(ncol, "ncol")
+  }
+  if (!is.null(nrow)) {
+    validate_count_parameter(nrow, "nrow")
+  }
+  if (!is.null(title) &&
+      (!is.character(title) || length(title) != 1 || is.na(title))) {
+    stop("'title' must be NULL or a single character string.", call. = FALSE)
+  }
 
   # Auto-adjust direction based on position if not explicitly set;
   # must check missing() BEFORE match.arg() which evaluates the formal
@@ -202,6 +250,14 @@ create_legend_theme <- function(position = "top",
 #' @return Calculated text size
 #' @export
 calculate_smart_text_size <- function(n_items, base_size = 10, min_size = 8, max_size = 14) {
+  validate_count_parameter(n_items, "n_items")
+  validate_positive_number(base_size, "base_size")
+  validate_positive_number(min_size, "min_size")
+  validate_positive_number(max_size, "max_size")
+  if (min_size > max_size) {
+    stop("'min_size' must be less than or equal to 'max_size'.",
+         call. = FALSE)
+  }
   
   if (n_items <= 5) {
     size <- base_size
@@ -247,6 +303,23 @@ create_pathway_class_theme <- function(text_size = "auto",
   # Validate inputs
   text_face <- match.arg(text_face, c("plain", "bold", "italic"))
   position <- match.arg(position, c("left", "right", "none"))
+  validate_auto_or_positive_number(text_size, "text_size")
+  validate_color_values(text_color, "text_color", expected_length = 1)
+  validate_color_values(bg_color, "bg_color", allow_null = TRUE,
+                        expected_length = 1)
+  if (!is.character(text_family) || length(text_family) != 1 ||
+      is.na(text_family) || !nzchar(trimws(text_family))) {
+    stop("'text_family' must be a single non-empty character string.",
+         call. = FALSE)
+  }
+  if (!is.numeric(text_angle) || length(text_angle) != 1 ||
+      is.na(text_angle) || !is.finite(text_angle)) {
+    stop("'text_angle' must be a single finite numeric value.",
+         call. = FALSE)
+  }
+  validate_probability_threshold(text_hjust, "text_hjust", allow_zero = TRUE)
+  validate_probability_threshold(text_vjust, "text_vjust", allow_zero = TRUE)
+  validate_probability_threshold(bg_alpha, "bg_alpha", allow_zero = TRUE)
   
   return(list(
     text_size = text_size,
@@ -270,10 +343,19 @@ create_pathway_class_theme <- function(text_size = "auto",
 #' @return Adjusted positions
 #' @export
 resolve_annotation_overlaps <- function(labels, positions, min_distance = 1) {
-  
-  if (length(labels) != length(positions)) {
-    stop("labels and positions must have the same length")
+  if (!is.character(labels)) {
+    stop("'labels' must be a character vector.", call. = FALSE)
   }
+  if (length(labels) != length(positions)) {
+    stop("'labels' and 'positions' must have the same length.",
+         call. = FALSE)
+  }
+  if (!is.numeric(positions) || anyNA(positions) ||
+      any(!is.finite(positions))) {
+    stop("'positions' must be a finite numeric vector without missing values.",
+         call. = FALSE)
+  }
+  validate_positive_number(min_distance, "min_distance", allow_zero = TRUE)
   
   if (length(positions) <= 1) {
     return(positions)
@@ -286,7 +368,7 @@ resolve_annotation_overlaps <- function(labels, positions, min_distance = 1) {
   # Adjust overlapping positions
   adjusted_positions <- sorted_positions
   
-  for (i in 2:length(adjusted_positions)) {
+  for (i in seq.int(2L, length(adjusted_positions))) {
     if (adjusted_positions[i] - adjusted_positions[i-1] < min_distance) {
       adjusted_positions[i] <- adjusted_positions[i-1] + min_distance
     }

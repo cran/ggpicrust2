@@ -22,34 +22,62 @@ visualize_gsea(
 \arguments{
 \item{gsea_results}{A data frame containing GSEA results from the pathway_gsea function}
 
-\item{plot_type}{A character string specifying the visualization type: "enrichment_plot", "dotplot", "barplot", "network", or "heatmap"}
+\item{plot_type}{Visualization type: "enrichment_plot" (a score-summary
+bar chart, not a running enrichment curve), "dotplot", "barplot",
+"network", or "heatmap". Network edges use leading-edge overlap; the
+heatmap shows per-pathway mean leading-edge abundance, standardized across
+samples. These two modes need leading-edge genes from preranked methods,
+which camera/fry do not provide.}
 
 \item{n_pathways}{An integer specifying the number of pathways to display}
 
 \item{sort_by}{A character string specifying the sorting criterion: "NES", "pvalue", or "p.adjust"}
 
-\item{colors}{A vector of colors for the visualization}
+\item{colors}{A vector of valid R colors used for the default heatmap group
+annotation palette. Colors are cycled when the number of observed groups
+exceeds the palette length.}
 
-\item{abundance}{A data frame containing the original abundance data (required for heatmap visualization)}
+\item{abundance}{A data frame containing the original abundance data (required for heatmap visualization). Data frames may also provide a leading non-numeric feature ID column (for example \code{#NAME}, \code{feature}, or \code{pathway}); it is converted to row names before sample alignment.}
 
 \item{metadata}{A data frame containing sample metadata (required for heatmap visualization)}
 
 \item{group}{A character string specifying the column name in metadata that contains the grouping variable (required for heatmap visualization)}
 
-\item{network_params}{A list of parameters for network visualization}
+\item{network_params}{A named list of network overrides. Supported names are
+`similarity_measure`, `similarity_cutoff`, `layout`, `node_color_by`, and
+`edge_width_by`.}
 
-\item{heatmap_params}{A list of parameters for heatmap visualization}
+\item{heatmap_params}{A named list of heatmap overrides. Supported names are
+`cluster_rows`, `cluster_columns`, `show_rownames`, `annotation_colors`, and
+`col_fun`. Custom `annotation_colors` must be a list containing a named `Group`
+color vector whose names exactly match the observed group labels.}
 
 \item{pathway_label_column}{A character string specifying which column to use for pathway labels.
 If NULL (default), the function will automatically use 'pathway_name' if available, otherwise 'pathway_id'.
 This allows for custom labeling when using annotated GSEA results.}
 
 \item{scale}{Optional palette/scale for customizing colors. Accepts: (1) a character vector of colors,
-(2) a function that returns colors given an integer (e.g., viridisLite::viridis), or
-(3) a ggplot2 scale object (e.g., ggplot2::scale_fill_gradientn(...)).
-When NULL, defaults keep current behavior. Applies to: enrichment_plot (fill, continuous),
-dotplot (color, continuous), barplot (fill, discrete Positive/Negative), network (color, diverging around 0),
-heatmap (main heatmap col; row annotation stays default unless overridden in heatmap_params).}
+  (2) a function that returns colors given an integer (e.g., viridisLite::viridis), or
+  (3) for non-heatmap plots, a ggplot2 scale object for the mapped aesthetic
+  (e.g., ggplot2::scale_fill_gradientn(...)).
+  When NULL, defaults keep current behavior. Applies to: enrichment_plot (fill, continuous),
+  dotplot (color, continuous), barplot (fill, discrete Positive/Negative), network (color, diverging around 0),
+  heatmap (main heatmap col; row annotation stays default unless overridden in heatmap_params).
+
+For every \code{plot_type}, the selected rows after sorting and
+\code{n_pathways} filtering must contain non-empty, unique
+\code{pathway_id} values so that each displayed pathway maps to exactly
+one GSEA result row.
+
+Results from \code{pathway_gsea(method = "camera")} and
+\code{pathway_gsea(method = "fry")} include a legacy \code{NES} column for
+visualization compatibility, but limma does not estimate a true normalized
+enrichment score for these methods. When \code{score_label} is present,
+axis and legend labels use it instead of labeling the value as NES.
+
+The function selects the top rows after sorting; it does not automatically
+filter by significance. Inspect adjusted p-values before interpreting a
+displayed pathway as significant.}
 }
 \value{
 A ggplot2 object or ComplexHeatmap object
@@ -92,8 +120,12 @@ annotated_results <- gsea_pathway_annotation(
 visualize_gsea(annotated_results, plot_type = "dotplot", n_pathways = 20)
 visualize_gsea(annotated_results, plot_type = "barplot", n_pathways = 15)
 
-# Create network plot with custom labels
-visualize_gsea(annotated_results, plot_type = "network", n_pathways = 15)
+# Only preranked methods provide leading-edge genes for network/heatmap.
+fgsea_results <- pathway_gsea(
+  abundance_data, metadata, "Environment", method = "fgsea",
+  comparison = c("Pro-survival", "Pro-inflammatory"), seed = 42
+)
+visualize_gsea(fgsea_results, plot_type = "network", n_pathways = 15)
 
 # Use custom column for labels (if available)
 visualize_gsea(annotated_results, plot_type = "barplot",
@@ -101,7 +133,7 @@ visualize_gsea(annotated_results, plot_type = "barplot",
 
 # Create heatmap
 visualize_gsea(
-  annotated_results,
+  fgsea_results,
   plot_type = "heatmap",
   n_pathways = 15,
   abundance = abundance_data,

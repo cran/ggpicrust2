@@ -15,7 +15,8 @@ run_limma_gsea(
   inter.gene.cor = 0.01,
   min_size = 5,
   max_size = 500,
-  p.adjust.method = "BH"
+  p.adjust.method = "BH",
+  transformation = c("voom", "logCPM")
 )
 }
 \arguments{
@@ -27,7 +28,8 @@ run_limma_gsea(
 
 \item{covariates}{A character vector of covariate column names (optional)}
 
-\item{contrast}{Contrast specification for multi-group comparisons (optional)}
+\item{contrast}{Contrast specification for camera/fry. See
+\code{\link{pathway_gsea}} for the public contract.}
 
 \item{gene_sets}{A named list of gene sets (pathway -> gene IDs)}
 
@@ -40,6 +42,9 @@ run_limma_gsea(
 \item{max_size}{Maximum gene set size}
 
 \item{p.adjust.method}{P-value adjustment method}
+
+\item{transformation}{Either \code{"voom"} or \code{"logCPM"}; see
+\code{\link{pathway_gsea}}.}
 }
 \value{
 A data frame containing gene set analysis results

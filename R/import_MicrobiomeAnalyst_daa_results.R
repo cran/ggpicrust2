@@ -3,18 +3,29 @@
 #' This function imports DAA results from an external platform such as MicrobiomeAnalyst. It can be used to compare the results obtained from different platforms.
 #' @name import_MicrobiomeAnalyst_daa_results
 #' @param file_path a character string specifying the path to the CSV file containing the DAA results from MicrobiomeAnalyst. If this parameter is NULL and no data frame is provided, an error will be thrown. Default is NULL.
-#' @param data a data frame containing the DAA results from MicrobiomeAnalyst. If this parameter is NULL and no file path is provided, an error will be thrown. Default is NULL.
-#' @param method a character string specifying the method used for the DAA. This will be added as a new column in the returned data frame. Default is "MicrobiomeAnalyst".
-#' @param group_levels a character vector specifying the group levels for the DAA. This will be added as new columns in the returned data frame. Default is c("control", "treatment").
+#' @param data a data frame containing the DAA results from MicrobiomeAnalyst. Feature identifiers can be stored in a feature/name column or in non-default row names. P-value and adjusted p-value columns are detected by semantic names such as \code{Pvalues} and \code{FDR}; \code{Statistics} and fold-change columns are optional. If this parameter is NULL and no file path is provided, an error will be thrown. Default is NULL.
+#' @param method a single non-empty character string specifying the method used for the DAA. This will be added as a new column in the returned data frame. Default is "MicrobiomeAnalyst".
+#' @param group_levels a character vector specifying at least two unique group levels for the DAA. These values will be added as new columns in the returned data frame. Default is c("control", "treatment").
 #'
-#' @return a data frame containing the DAA results from MicrobiomeAnalyst with additional columns for the method and group levels.
+#' @return a data frame containing the DAA results from MicrobiomeAnalyst with
+#'   validated \code{feature}, \code{p_values}, and \code{p_adjust} columns,
+#'   optional \code{Statistics} and \code{log2_fold_change} columns when present
+#'   in the imported result, plus additional columns for the method and group
+#'   levels.
 #'
 #' @examples
-#' \dontrun{
-#' # Assuming you have a CSV file named "DAA_results.csv" in your current directory
-#' daa_results <- import_MicrobiomeAnalyst_daa_results(file_path = "DAA_results.csv")
-#' }
+#' # Synthetic export with explicit feature and probability columns.
+#' exported <- data.frame(
+#'   feature = c("K00001", "K00002"),
+#'   Pvalues = c(0.01, 0.20), FDR = c(0.02, 0.20)
+#' )
+#' daa_results <- import_MicrobiomeAnalyst_daa_results(data = exported)
 #'
+#' # The same table can be read from a CSV file.
+#' export_file <- tempfile(fileext = ".csv")
+#' utils::write.csv(exported, export_file, row.names = FALSE)
+#' import_MicrobiomeAnalyst_daa_results(file_path = export_file)
+#' unlink(export_file)
 #' @export
 import_MicrobiomeAnalyst_daa_results <- function(file_path = NULL,
                                                 data = NULL,
@@ -29,28 +40,81 @@ import_MicrobiomeAnalyst_daa_results <- function(file_path = NULL,
     if (is.null(file_path)) {
       stop("Please provide either a file_path or a data frame.")
     }
+    if (!is.character(file_path) || length(file_path) != 1 ||
+        is.na(file_path) || !nzchar(trimws(file_path))) {
+      stop("'file_path' must be a single non-empty file path.",
+           call. = FALSE)
+    }
     if (!file.exists(file_path)) {
       stop("file_path does not exist: ", file_path, call. = FALSE)
     }
-    data <- utils::read.csv(file_path, stringsAsFactors = FALSE)
+    data <- utils::read.csv(file_path,
+                            stringsAsFactors = FALSE,
+                            check.names = FALSE)
   }
 
   validate_dataframe(data, param_name = "data")
 
-  if (!is.character(group_levels) || length(group_levels) < 1 || anyNA(group_levels)) {
-    stop("group_levels must be a non-empty character vector without NA values.",
+  if (!is.character(method) || length(method) != 1 ||
+      is.na(method) || !nzchar(trimws(method))) {
+    stop("method must be a single non-empty character value.",
+         call. = FALSE)
+  }
+  method <- trimws(method)
+
+  if (!is.character(group_levels) || length(group_levels) < 2 ||
+      anyNA(group_levels) || any(!nzchar(trimws(group_levels)))) {
+    stop("group_levels must contain at least two unique, non-empty character values without NA values.",
+         call. = FALSE)
+  }
+  group_levels <- trimws(group_levels)
+  if (anyDuplicated(group_levels)) {
+    stop("group_levels must contain at least two unique, non-empty character values without NA values.",
          call. = FALSE)
   }
 
-  required_output_cols <- c("feature", "p_values", "p_adjust", "Statistics")
-  if (ncol(data) < length(required_output_cols)) {
-    stop("MicrobiomeAnalyst DAA results must contain at least four columns: ",
-         paste(required_output_cols, collapse = ", "),
+  data <- standardize_microbiomeanalyst_columns(data)
+
+  data$feature <- validate_nonempty_character_column(
+    data$feature,
+    "feature",
+    "data"
+  )
+  if (anyDuplicated(data$feature)) {
+    dup_features <- unique(data$feature[duplicated(data$feature)])
+    stop("Column 'feature' contains duplicated identifiers: ",
+         paste(utils::head(dup_features, 5), collapse = ", "),
          call. = FALSE)
   }
 
-  data <- as.data.frame(data, stringsAsFactors = FALSE)
-  names(data)[seq_along(required_output_cols)] <- required_output_cols
+  numeric_cols <- intersect(
+    c("p_values", "p_adjust", "Statistics", "log2_fold_change"),
+    colnames(data)
+  )
+  for (col in numeric_cols) {
+    if (!is.numeric(data[[col]])) {
+      input_values <- as.character(data[[col]])
+      missing_input <- is.na(input_values) | !nzchar(trimws(input_values))
+      parsed <- suppressWarnings(as.numeric(input_values))
+      introduced_na <- is.na(parsed) & !missing_input
+      if (any(introduced_na)) {
+        stop("Column '", col, "' must be numeric or numeric-like.",
+             call. = FALSE)
+      }
+      data[[col]] <- parsed
+    }
+  }
+
+  validate_probability_values(data$p_values, "p_values", "data")
+  validate_probability_values(data$p_adjust, "p_adjust", "data")
+  if ("Statistics" %in% colnames(data)) {
+    validate_finite_numeric_values(data$Statistics, "Statistics", "data")
+  }
+  if ("log2_fold_change" %in% colnames(data)) {
+    validate_finite_numeric_values(data$log2_fold_change,
+                                   "log2_fold_change",
+                                   "data")
+  }
 
   # Create a new column for method
   data$method <- method
@@ -61,4 +125,121 @@ import_MicrobiomeAnalyst_daa_results <- function(file_path = NULL,
   }
 
   return(data)
+}
+
+normalize_microbiomeanalyst_column_name <- function(x) {
+  tolower(gsub("[^[:alnum:]]+", "", x))
+}
+
+resolve_microbiomeanalyst_column <- function(data,
+                                             aliases,
+                                             target,
+                                             required = TRUE,
+                                             allow_blank_first = FALSE) {
+  column_names <- names(data)
+  normalized_names <- normalize_microbiomeanalyst_column_name(column_names)
+  normalized_aliases <- normalize_microbiomeanalyst_column_name(aliases)
+  matches <- which(normalized_names %in% normalized_aliases)
+
+  if (allow_blank_first && length(matches) == 0 && ncol(data) > 0 &&
+      (!nzchar(column_names[1]) || is.na(column_names[1]))) {
+    matches <- 1L
+  }
+
+  if (length(matches) == 0) {
+    if (required) {
+      stop("MicrobiomeAnalyst DAA results must contain a column for '",
+           target, "'. Recognized names include: ",
+           paste(aliases, collapse = ", "),
+           call. = FALSE)
+    }
+    return(NA_integer_)
+  }
+
+  if (length(matches) > 1) {
+    stop("Ambiguous MicrobiomeAnalyst DAA columns for '", target, "': ",
+         paste(column_names[matches], collapse = ", "),
+         ". Keep only one semantic column before importing.",
+         call. = FALSE)
+  }
+
+  matches
+}
+
+standardize_microbiomeanalyst_columns <- function(data) {
+  data <- as.data.frame(data, stringsAsFactors = FALSE, check.names = FALSE)
+  names(data) <- as.character(names(data))
+
+  feature_aliases <- c(
+    "feature", "features", "id", "ids", "name", "names",
+    "rowname", "rownames", "otu", "otunames", "otu names",
+    "ko", "kegg", "pathway", "pathway_id"
+  )
+  p_value_aliases <- c(
+    "p_values", "pvalues", "pvalue", "p-value", "p.value",
+    "pval", "pvals", "raw_p", "rawp", "p"
+  )
+  p_adjust_aliases <- c(
+    "p_adjust", "padjust", "p.adjust", "fdr", "adjpvalues",
+    "adjpvalue", "adj.p.values", "adj.p.value", "padj",
+    "qvalue", "qvalues", "adjustedpvalue", "adjustedpvalues"
+  )
+  statistic_aliases <- c(
+    "Statistics", "Statistic", "statistics", "statistic",
+    "stats", "stat", "tstat", "tstatistic"
+  )
+  log2fc_aliases <- c(
+    "log2_fold_change", "log2foldchange", "log2FC", "logFC",
+    "log2fc", "logfc", "logFoldChange", "log_fold_change"
+  )
+
+  feature_col <- resolve_microbiomeanalyst_column(
+    data,
+    feature_aliases,
+    "feature",
+    required = FALSE,
+    allow_blank_first = TRUE
+  )
+  if (is.na(feature_col)) {
+    if (!has_non_default_rownames(data)) {
+      stop("MicrobiomeAnalyst DAA results must contain feature identifiers ",
+           "either in a feature/name column or in non-default row names.",
+           call. = FALSE)
+    }
+    data <- data.frame(
+      feature = rownames(data),
+      data,
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  semantic_columns <- list(
+    feature = resolve_microbiomeanalyst_column(
+      data, feature_aliases, "feature",
+      required = TRUE,
+      allow_blank_first = TRUE
+    ),
+    p_values = resolve_microbiomeanalyst_column(
+      data, p_value_aliases, "p_values", required = TRUE
+    ),
+    p_adjust = resolve_microbiomeanalyst_column(
+      data, p_adjust_aliases, "p_adjust", required = TRUE
+    ),
+    Statistics = resolve_microbiomeanalyst_column(
+      data, statistic_aliases, "Statistics", required = FALSE
+    ),
+    log2_fold_change = resolve_microbiomeanalyst_column(
+      data, log2fc_aliases, "log2_fold_change", required = FALSE
+    )
+  )
+
+  for (target in names(semantic_columns)) {
+    idx <- semantic_columns[[target]]
+    if (!is.na(idx)) {
+      names(data)[idx] <- target
+    }
+  }
+
+  data
 }

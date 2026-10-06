@@ -6,60 +6,59 @@ knitr::opts_chunk$set(
   fig.height = 5
 )
 
+## ----installation, eval=FALSE-------------------------------------------------
+# install.packages(c("ggpicrust2", "MicrobiomeStat", "ggridges", "ggVennDiagram",
+#                    "circlize", "igraph", "BiocManager"))
+# BiocManager::install(c("limma", "fgsea", "ComplexHeatmap"))
+
 ## ----setup, eval=FALSE--------------------------------------------------------
-# # Install ggpicrust2
-# if (!requireNamespace("ggpicrust2", quietly = TRUE)) {
-#   devtools::install_github("cafferychen777/ggpicrust2")
-# }
-# 
-# # Install required Bioconductor packages
-# if (!requireNamespace("BiocManager", quietly = TRUE)) {
-#   install.packages("BiocManager")
-# }
-# 
-# BiocManager::install(c("limma", "fgsea", "clusterProfiler", "enrichplot", "DOSE", "pathview"))
-# 
-# # Load the package
 # library(ggpicrust2)
-# library(dplyr)
-# library(ggplot2)
 
 ## ----basic-gsea, eval=FALSE---------------------------------------------------
 # # Load example data
 # data(ko_abundance)
 # data(metadata)
+# metadata$Environment <- factor(
+#   metadata$Environment, levels = c("Pro-inflammatory", "Pro-survival")
+# )
 # 
 # # Prepare abundance data
 # abundance_data <- as.data.frame(ko_abundance)
 # rownames(abundance_data) <- abundance_data[, "#NAME"]
 # abundance_data <- abundance_data[, -1]
 # 
-# # Run GSEA analysis with camera (recommended)
+# # Run the competitive camera test
 # gsea_results <- pathway_gsea(
 #   abundance = abundance_data,
 #   metadata = metadata,
 #   group = "Environment",
 #   pathway_type = "KEGG",
 #   method = "camera",
+#   inter.gene.cor = NA_real_,
 #   min_size = 5,
 #   max_size = 500,
-#   p.adjust = "BH"
+#   p_adjust_method = "BH"
 # )
 # 
 # # View the top results
 # head(gsea_results)
 
+## ----inspect-results, eval=FALSE----------------------------------------------
+# table(gsea_results$direction)
+# sum(gsea_results$p.adjust < 0.05, na.rm = TRUE)
+# unique(gsea_results[, c("method", "score_type", "score_label")])
+
 ## ----covariate-gsea, eval=FALSE-----------------------------------------------
-# # Example with covariate adjustment
-# # Assuming metadata has columns: group, age, sex, BMI
+# # Mouse_Sex is observed in the bundled metadata and varies within both groups.
 # 
 # gsea_results_adjusted <- pathway_gsea(
 #   abundance = abundance_data,
 #   metadata = metadata,
-#   group = "Disease",
-#   covariates = c("age", "sex", "BMI"),  # Adjust for these confounders
+#   group = "Environment",
+#   covariates = "Mouse_Sex",
 #   pathway_type = "KEGG",
-#   method = "camera"
+#   method = "camera",
+#   inter.gene.cor = NA_real_
 # )
 # 
 # # The results now reflect the group effect after adjusting for confounders
@@ -80,8 +79,7 @@ knitr::opts_chunk$set(
 # head(gsea_results_fry)
 
 ## ----fgsea, eval=FALSE--------------------------------------------------------
-# # Note: Preranked methods don't account for inter-gene correlations
-# # P-values may be less reliable (Wu et al., 2012)
+# # Preranked testing uses a different null from camera/fry.
 # gsea_results_fgsea <- pathway_gsea(
 #   abundance = abundance_data,
 #   metadata = metadata,
@@ -89,10 +87,10 @@ knitr::opts_chunk$set(
 #   pathway_type = "KEGG",
 #   method = "fgsea",
 #   rank_method = "signal2noise",
-#   nperm = 1000,
+#   comparison = c("Pro-survival", "Pro-inflammatory"),
 #   min_size = 10,
 #   max_size = 500,
-#   p.adjust = "BH",
+#   p_adjust_method = "BH",
 #   seed = 42
 # )
 # 
@@ -138,7 +136,7 @@ knitr::opts_chunk$set(
 # plot_custom_labels
 
 ## ----barplot, eval=FALSE------------------------------------------------------
-# # Create a barplot of the top enriched pathways
+# # Create a barplot of the top-ranked pathways
 # barplot <- visualize_gsea(
 #   gsea_results = annotated_results,
 #   plot_type = "barplot",
@@ -150,7 +148,7 @@ knitr::opts_chunk$set(
 # barplot
 
 ## ----dotplot, eval=FALSE------------------------------------------------------
-# # Create a dotplot of the top enriched pathways
+# # Create a dotplot of the top-ranked pathways
 # dotplot <- visualize_gsea(
 #   gsea_results = annotated_results,
 #   plot_type = "dotplot",
@@ -162,12 +160,12 @@ knitr::opts_chunk$set(
 # dotplot
 
 ## ----enrichment-plot, eval=FALSE----------------------------------------------
-# # Create an enrichment plot for a specific pathway
+# # This is a score-summary bar chart, not a running enrichment curve.
 # enrichment_plot <- visualize_gsea(
 #   gsea_results = annotated_results,
 #   plot_type = "enrichment_plot",
 #   n_pathways = 10,
-#   sort_by = "NES"
+#   sort_by = "p.adjust"
 # )
 # 
 # # Display the plot
@@ -182,6 +180,7 @@ knitr::opts_chunk$set(
 #   metadata = metadata,
 #   group = "Environment",
 #   pathway_type = "KEGG",
+#   comparison = c("Pro-inflammatory", "Pro-survival"),
 #   n_pathways = 10,
 #   sort_by = "p.adjust",
 #   show_direction = TRUE,
@@ -191,26 +190,44 @@ knitr::opts_chunk$set(
 # # Display the plot
 # ridge_plot
 
+## ----leading-edge-plots, eval=FALSE-------------------------------------------
+# annotated_fgsea <- gsea_pathway_annotation(gsea_results_fgsea, pathway_type = "KEGG")
+# leading_results <- annotated_fgsea[
+#   !is.na(annotated_fgsea$leading_edge) & nzchar(annotated_fgsea$leading_edge), , drop = FALSE
+# ]
+# if (nrow(leading_results) > 0) {
+#   network_plot <- visualize_gsea(
+#     leading_results, plot_type = "network", n_pathways = 10,
+#     network_params = list(similarity_measure = "jaccard", similarity_cutoff = 0.2)
+#   )
+#   print(network_plot)
+#   leading_heatmap <- visualize_gsea(
+#     leading_results, plot_type = "heatmap", n_pathways = 10,
+#     abundance = abundance_data, metadata = metadata, group = "Environment",
+#     heatmap_params = list(cluster_rows = TRUE, cluster_columns = TRUE,
+#                           show_rownames = TRUE)
+#   )
+#   ComplexHeatmap::draw(leading_heatmap)
+# }
+
 ## ----compare-gsea-daa, eval=FALSE---------------------------------------------
-# # Run DAA analysis
+# # Compare KEGG pathways to KEGG pathways, not individual KO identifiers.
+# kegg_pathway_abundance <- ko2kegg_abundance(data = ko_abundance)
 # daa_results <- pathway_daa(
-#   abundance = abundance_data,
+#   abundance = kegg_pathway_abundance,
 #   metadata = metadata,
 #   group = "Environment",
-#   daa_method = "ALDEx2"
+#   daa_method = "LinDA"
 # )
 # 
-# # Annotate DAA results
-# annotated_daa_results <- pathway_annotation(
-#   pathway = "KO",
-#   daa_results_df = daa_results,
-#   ko_to_kegg = TRUE
-# )
-# 
-# # Compare GSEA and DAA results
+# # Compare only pathways that both procedures actually tested.
+# # Keep each analysis's original multiple-testing adjustment.
+# common_pathways <- intersect(annotated_results$pathway_id, daa_results$feature)
+# gsea_common <- annotated_results[annotated_results$pathway_id %in% common_pathways, , drop = FALSE]
+# daa_common <- daa_results[daa_results$feature %in% common_pathways, , drop = FALSE]
 # comparison <- compare_gsea_daa(
-#   gsea_results = annotated_results,
-#   daa_results = annotated_daa_results,
+#   gsea_results = gsea_common,
+#   daa_results = daa_common,
 #   plot_type = "venn",
 #   p_threshold = 0.05
 # )

@@ -53,6 +53,14 @@ test_that("pathway_volcano handles custom colors", {
     colors = c("Down" = "blue", "Not Significant" = "gray", "Up" = "red")
   )
   expect_s3_class(p, "ggplot")
+
+  expect_error(
+    pathway_volcano(
+      create_volcano_test_data(),
+      colors = c(Down = "blue", typo = "gray", Up = "red")
+    ),
+    "must exactly match categorical levels"
+  )
 })
 
 test_that("pathway_volcano handles no labels", {
@@ -94,6 +102,41 @@ test_that("pathway_volcano keeps all-zero p-values finite", {
   expect_true(all(p$data$neg_log10_p > 0))
 })
 
+test_that("pathway_volcano preserves valid subnormal p-values", {
+  daa_results <- data.frame(
+    pathway_name = c("Tiny", "Zero"),
+    log2_fold_change = c(2, -2),
+    p_adjust = c(1e-320, 0),
+    stringsAsFactors = FALSE
+  )
+
+  p <- pathway_volcano(daa_results, label_top_n = 0)
+
+  expect_equal(p$data$neg_log10_p[1], 320, tolerance = 1e-6)
+  expect_equal(
+    p$data$neg_log10_p[2],
+    -log10(.Machine$double.xmin),
+    tolerance = 1e-12
+  )
+})
+
+test_that("pathway_volcano requires explicit label columns when labeling", {
+  daa_results <- data.frame(
+    log2_fold_change = c(2, -2),
+    p_adjust = c(0.01, 0.02),
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    pathway_volcano(daa_results, label_col = "misspelled"),
+    "Column 'misspelled' not found"
+  )
+  expect_s3_class(
+    pathway_volcano(daa_results, label_col = "misspelled", label_top_n = 0),
+    "ggplot"
+  )
+})
+
 test_that("pathway_volcano rejects negative p-values", {
   daa_results <- data.frame(
     feature = "ko00001",
@@ -103,10 +146,41 @@ test_that("pathway_volcano rejects negative p-values", {
     stringsAsFactors = FALSE
   )
 
-  expect_error(pathway_volcano(daa_results), "negative")
+  expect_error(pathway_volcano(daa_results), "between 0 and 1")
+})
+
+test_that("pathway_volcano rejects invalid p-values and thresholds", {
+  daa_results <- data.frame(
+    feature = "ko00001",
+    pathway_name = "Pathway 1",
+    log2_fold_change = 2,
+    p_adjust = 1.2,
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(pathway_volcano(daa_results), "between 0 and 1")
+
+  daa_results$p_adjust <- 0.01
+  expect_error(pathway_volcano(daa_results, p_threshold = 0), "range")
+  expect_error(pathway_volcano(daa_results, p_threshold = 1.1), "range")
+})
+
+test_that("pathway_volcano rejects non-finite fold changes", {
+  daa_results <- data.frame(
+    feature = "ko00001",
+    pathway_name = "Pathway 1",
+    log2_fold_change = Inf,
+    p_adjust = 0.01,
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(pathway_volcano(daa_results), "finite numeric")
+  expect_error(pathway_volcano(daa_results, fc_threshold = NA_real_),
+               "single finite numeric")
 })
 
 test_that("pathway_volcano works with real DAA workflow", {
+  skip_if_not_installed("MicrobiomeStat")
   skip_if_not_installed("ggrepel")
   skip_on_cran()
 
@@ -130,4 +204,38 @@ test_that("pathway_volcano works with real DAA workflow", {
 
   p <- pathway_volcano(daa_annotated, label_top_n = 5)
   expect_s3_class(p, "ggplot")
+})
+
+test_that("pathway_volcano validates display parameters at the boundary", {
+  daa_results <- data.frame(
+    pathway_name = c("Pathway 1", "Pathway 2"),
+    log2_fold_change = c(2, -2),
+    p_adjust = c(0.01, 0.02),
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    pathway_volcano(daa_results, label_top_n = 1.5),
+    "label_top_n.*integer"
+  )
+  expect_error(
+    pathway_volcano(daa_results, show_threshold_lines = NA),
+    "show_threshold_lines.*TRUE or FALSE"
+  )
+  expect_error(
+    pathway_volcano(daa_results, point_alpha = 1.1),
+    "point_alpha.*range"
+  )
+  expect_error(
+    pathway_volcano(daa_results, point_size = 0),
+    "point_size.*positive"
+  )
+  expect_error(
+    pathway_volcano(daa_results, colors = c("red", "not-a-color", "blue")),
+    "invalid R color"
+  )
+  expect_error(
+    pathway_volcano(daa_results, fc_col = c("a", "b")),
+    "fc_col.*single non-empty"
+  )
 })

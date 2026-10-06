@@ -19,16 +19,17 @@ aggregate_taxa_contributions(
 \item{contrib_data}{A data.frame from \code{\link{read_contrib_file}} or
 \code{\link{read_strat_file}}.}
 
-\item{taxonomy}{Optional data.frame mapping taxon IDs to taxonomy. Supports
-QIIME2 format (semicolon-delimited taxonomy strings) or DADA2 format
-(separate columns for each rank).}
+\item{taxonomy}{Optional data frame or matrix mapping taxon IDs to taxonomy.
+Taxon IDs may be stored in a standard ID column or in explicit row names.
+Supports QIIME2 format (semicolon-delimited taxonomy strings) or DADA2
+format (separate columns for each rank).}
 
 \item{tax_level}{Character. Taxonomic rank for aggregation. One of
 \code{"Kingdom"}, \code{"Phylum"}, \code{"Class"}, \code{"Order"},
 \code{"Family"}, \code{"Genus"}, \code{"Species"}. Default \code{"Genus"}.}
 
-\item{top_n}{Integer. Number of top taxa to keep; remaining are lumped as
-"Other". Default 10.}
+\item{top_n}{Integer. Number of top taxa to keep by total contribution;
+remaining are lumped as "Other". Default 10.}
 
 \item{daa_results_df}{Optional data.frame from \code{\link{pathway_daa}},
 used to filter contributions to significant pathways.}
@@ -37,7 +38,7 @@ used to filter contributions to significant pathways.}
 Alternative to \code{daa_results_df}.}
 
 \item{p_threshold}{Numeric. Significance cutoff when using
-\code{daa_results_df}. Default 0.05.}
+\code{daa_results_df}. Default 0.05. Must be in the range (0, 1].}
 
 \item{contribution_col}{Character. Column to aggregate. Use \code{"auto"}
 to select the first available column from
@@ -54,13 +55,14 @@ differential abundance analysis results. Optionally maps ASV/OTU IDs to
 taxonomic names and filters to significant pathways.
 }
 \details{
-When \code{daa_results_df} is provided, the function:
-\enumerate{
-  \item Extracts significant pathway IDs from the DAA results
-  \item Maps pathway IDs to their constituent KO IDs using the internal
-    ko_to_kegg reference
-  \item Filters contribution data to only matching KO IDs
-}
+With \code{daa_results_df}, significant feature IDs are used as filters.
+KEGG pathway IDs are expanded to member KOs only when the contribution
+input is KO-level. This selects KO rows; output \code{function_id} values
+remain KO IDs and are not reconstructed pathway contributions. With
+pathway-level input (for example MetaCyc), IDs are matched directly.
+Aggregation sums the selected contribution column within each
+sample/function/taxonomic label. Percentage plots normalize those sums
+afterward; aggregation itself does not convert raw abundance to fractions.
 
 Taxonomy can be provided in two formats:
 \itemize{
@@ -68,6 +70,11 @@ Taxonomy can be provided in two formats:
     semicolon-delimited strings (e.g., "k__Bacteria;p__Firmicutes;...")
   \item DADA2: Separate columns for each rank (\code{Kingdom}, \code{Phylum}, etc.)
 }
+Contribution table identifier columns (\code{sample}, \code{function_id},
+and \code{taxon}) and requested pathway/function IDs must be non-empty and
+non-missing, because R's aggregation functions otherwise omit missing keys
+without preserving contribution totals. Contribution tables must not mix
+gene-family-level and pathway-level identifiers in the same aggregation.
 }
 \examples{
 \donttest{
@@ -76,8 +83,7 @@ contrib <- data.frame(
   sample = rep(c("S1", "S2"), each = 6),
   function_id = rep(c("K00001", "K00002", "K00003"), 4),
   taxon = rep(c("ASV1", "ASV2"), each = 3, times = 2),
-  taxon_function_abun = runif(12),
-  norm_taxon_function_contrib = runif(12)
+  taxon_function_abun = seq_len(12)
 )
 agg <- aggregate_taxa_contributions(contrib, top_n = 2)
 head(agg)

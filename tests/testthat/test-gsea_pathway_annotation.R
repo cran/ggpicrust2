@@ -51,7 +51,59 @@ test_that("gsea_pathway_annotation validates inputs correctly", {
 
   expect_error(gsea_pathway_annotation(gsea_results = "invalid"), "'gsea_results' must be a data frame")
   expect_error(gsea_pathway_annotation(gsea_results, pathway_type = "invalid"), "pathway_type must be one of")
+  expect_error(gsea_pathway_annotation(gsea_results, pathway_type = NA_character_), "pathway_type must be one of")
 
   gsea_results_missing <- gsea_results[, !names(gsea_results) %in% c("pathway_id")]
   expect_error(gsea_pathway_annotation(gsea_results_missing), "missing required column: pathway_id")
+
+  gsea_results_bad_id <- gsea_results
+  gsea_results_bad_id$pathway_id[1] <- NA_character_
+  expect_error(
+    gsea_pathway_annotation(gsea_results_bad_id),
+    "pathway_id.*non-empty"
+  )
+
+  gsea_results_bad_id$pathway_id[1] <- ""
+  expect_error(
+    gsea_pathway_annotation(gsea_results_bad_id),
+    "pathway_id.*non-empty"
+  )
+})
+
+test_that("GSEA annotation lookup preserves duplicate input rows and order", {
+  annotate_lookup <- getFromNamespace("annotate_gsea_from_lookup", "ggpicrust2")
+  input <- data.frame(
+    pathway_id = c("p2", "p1", "p2", "unknown"),
+    score = seq_len(4),
+    pathway_name = "stale",
+    stringsAsFactors = FALSE
+  )
+
+  result <- annotate_lookup(
+    input,
+    reference_ids = c("p1", "p2"),
+    reference_names = c("Name 1", "Name 2"),
+    reference_name = "test reference"
+  )
+
+  expect_equal(result$pathway_id, input$pathway_id)
+  expect_equal(result$score, input$score)
+  expect_equal(result$pathway_name,
+               c("Name 2", "Name 1", "Name 2", "unknown"))
+  expect_equal(nrow(result), nrow(input))
+})
+
+test_that("GSEA annotation lookup rejects duplicate reference keys", {
+  annotate_lookup <- getFromNamespace("annotate_gsea_from_lookup", "ggpicrust2")
+  input <- data.frame(pathway_id = "p1", stringsAsFactors = FALSE)
+
+  expect_error(
+    annotate_lookup(
+      input,
+      reference_ids = c("p1", "p1"),
+      reference_names = c("First", "Second"),
+      reference_name = "test reference"
+    ),
+    "duplicated pathway IDs.*p1"
+  )
 })

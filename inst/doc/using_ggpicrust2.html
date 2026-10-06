@@ -358,185 +358,273 @@ single-feature testing</li>
 GSEA walkthrough, see the dedicated <code>gsea_analysis</code>
 vignette.</p>
 </div>
-<div id="installation" class="section level2">
-<h2>Installation</h2>
-<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="co"># install.packages(&quot;devtools&quot;)</span></span>
-<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>devtools<span class="sc">::</span><span class="fu">install_github</span>(<span class="st">&quot;cafferychen777/ggpicrust2&quot;</span>)</span>
-<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a></span>
-<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a><span class="fu">library</span>(ggpicrust2)</span>
-<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a><span class="fu">library</span>(tibble)</span></code></pre></div>
+<div id="installation-and-example-data" class="section level2">
+<h2>Installation and example data</h2>
+<p>Install the package and the optional backends used by this
+tutorial:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="fu">install.packages</span>(<span class="fu">c</span>(<span class="st">&quot;ggpicrust2&quot;</span>, <span class="st">&quot;MicrobiomeStat&quot;</span>, <span class="st">&quot;BiocManager&quot;</span>))</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>BiocManager<span class="sc">::</span><span class="fu">install</span>(<span class="fu">c</span>(<span class="st">&quot;KEGGREST&quot;</span>, <span class="st">&quot;limma&quot;</span>))</span></code></pre></div>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="fu">library</span>(ggpicrust2)</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a><span class="fu">library</span>(tibble)</span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a><span class="fu">data</span>(<span class="st">&quot;ko_abundance&quot;</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a><span class="fu">data</span>(<span class="st">&quot;metadata&quot;</span>)</span>
+<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a>alpha <span class="ot">&lt;-</span> <span class="fl">0.05</span></span></code></pre></div>
+<p>Both workflows below use the same data, LinDA method, and adjusted
+p-value threshold. LinDA accepts the continuous abundance estimates
+produced by <code>ko2kegg_abundance()</code>, but its default count-data
+winsorization rounds values inside MicrobiomeStat. In a direct
+<code>pathway_daa()</code> call, set <code>linda_winsor = FALSE</code>
+to preserve fractional values and <code>linda_adaptive = FALSE</code>
+for fixed pseudo-count handling. A fixed pseudo-count still depends on
+the units of the input when zeros are present. Count-based methods such
+as ALDEx2 require integer input and the package rounds non-integer input
+with a warning. Choose the method for its assumptions and your study
+design, not to obtain significance. KEGG pathway annotation requires
+internet access and <code>KEGGREST</code>.</p>
 </div>
 <div id="one-command-workflow" class="section level2">
 <h2>One-command workflow</h2>
-<p>If you want a fast end-to-end run from abundance data to annotated
-differential abundance output, start with <code>ggpicrust2()</code>:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="fu">data</span>(<span class="st">&quot;ko_abundance&quot;</span>)</span>
-<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a><span class="fu">data</span>(<span class="st">&quot;metadata&quot;</span>)</span>
-<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a></span>
-<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a>results <span class="ot">&lt;-</span> <span class="fu">ggpicrust2</span>(</span>
-<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a>  <span class="at">data =</span> ko_abundance,</span>
-<span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a>  <span class="at">metadata =</span> metadata,</span>
-<span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a>  <span class="at">group =</span> <span class="st">&quot;Environment&quot;</span>,</span>
-<span id="cb2-8"><a href="#cb2-8" tabindex="-1"></a>  <span class="at">pathway =</span> <span class="st">&quot;KO&quot;</span>,</span>
-<span id="cb2-9"><a href="#cb2-9" tabindex="-1"></a>  <span class="at">daa_method =</span> <span class="st">&quot;LinDA&quot;</span>,</span>
-<span id="cb2-10"><a href="#cb2-10" tabindex="-1"></a>  <span class="at">ko_to_kegg =</span> <span class="cn">TRUE</span>,</span>
-<span id="cb2-11"><a href="#cb2-11" tabindex="-1"></a>  <span class="at">order =</span> <span class="st">&quot;pathway_class&quot;</span>,</span>
-<span id="cb2-12"><a href="#cb2-12" tabindex="-1"></a>  <span class="at">p_values_bar =</span> <span class="cn">TRUE</span>,</span>
-<span id="cb2-13"><a href="#cb2-13" tabindex="-1"></a>  <span class="at">x_lab =</span> <span class="st">&quot;pathway_name&quot;</span></span>
-<span id="cb2-14"><a href="#cb2-14" tabindex="-1"></a>)</span>
-<span id="cb2-15"><a href="#cb2-15" tabindex="-1"></a></span>
-<span id="cb2-16"><a href="#cb2-16" tabindex="-1"></a><span class="co"># Access the main outputs</span></span>
-<span id="cb2-17"><a href="#cb2-17" tabindex="-1"></a>results[[<span class="dv">1</span>]]<span class="sc">$</span>plot</span>
-<span id="cb2-18"><a href="#cb2-18" tabindex="-1"></a><span class="fu">head</span>(results[[<span class="dv">1</span>]]<span class="sc">$</span>results)</span></code></pre></div>
-<p>Use this route when you want a fast default analysis. Use the
-stepwise workflow below when you need more control over data preparation
-or visualization.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a>results <span class="ot">&lt;-</span> <span class="fu">ggpicrust2</span>(</span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a>  <span class="at">data =</span> ko_abundance,</span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a>  <span class="at">metadata =</span> metadata,</span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a>  <span class="at">group =</span> <span class="st">&quot;Environment&quot;</span>,</span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a>  <span class="at">pathway =</span> <span class="st">&quot;KO&quot;</span>,</span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a>  <span class="at">daa_method =</span> <span class="st">&quot;LinDA&quot;</span>,</span>
+<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a>  <span class="at">ko_to_kegg =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a>  <span class="at">order =</span> <span class="st">&quot;pathway_class&quot;</span>,</span>
+<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a>  <span class="at">p_values_bar =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb3-10"><a href="#cb3-10" tabindex="-1"></a>  <span class="at">p_values_threshold =</span> alpha,</span>
+<span id="cb3-11"><a href="#cb3-11" tabindex="-1"></a>  <span class="at">x_lab =</span> <span class="st">&quot;pathway_name&quot;</span></span>
+<span id="cb3-12"><a href="#cb3-12" tabindex="-1"></a>)</span>
+<span id="cb3-13"><a href="#cb3-13" tabindex="-1"></a></span>
+<span id="cb3-14"><a href="#cb3-14" tabindex="-1"></a><span class="co"># A method&#39;s plot is NULL when no pathways can be plotted.</span></span>
+<span id="cb3-15"><a href="#cb3-15" tabindex="-1"></a>results[[<span class="dv">1</span>]]<span class="sc">$</span>plot</span>
+<span id="cb3-16"><a href="#cb3-16" tabindex="-1"></a><span class="fu">head</span>(results[[<span class="dv">1</span>]]<span class="sc">$</span>results)</span></code></pre></div>
 </div>
 <div id="stepwise-pathway-workflow" class="section level2">
 <h2>Stepwise pathway workflow</h2>
+<p>Run the installation and example-data setup above first. This
+workflow uses the same analysis settings as the one-command
+workflow.</p>
 <div id="convert-ko-abundance-to-kegg-pathway-abundance" class="section level3">
 <h3>Convert KO abundance to KEGG pathway abundance</h3>
-<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a>kegg_pathway_abundance <span class="ot">&lt;-</span> <span class="fu">ko2kegg_abundance</span>(<span class="at">data =</span> ko_abundance)</span>
-<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a><span class="fu">head</span>(kegg_pathway_abundance[, <span class="dv">1</span><span class="sc">:</span><span class="dv">3</span>])</span></code></pre></div>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a>kegg_pathway_abundance <span class="ot">&lt;-</span> <span class="fu">ko2kegg_abundance</span>(<span class="at">data =</span> ko_abundance)</span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a><span class="fu">head</span>(kegg_pathway_abundance[, <span class="dv">1</span><span class="sc">:</span><span class="dv">3</span>])</span></code></pre></div>
+</div>
+<div id="match-group-labels-to-sample-identifiers" class="section level3">
+<h3>Match group labels to sample identifiers</h3>
+<p><code>pathway_daa()</code>, <code>pathway_heatmap()</code>, and
+<code>pathway_pca()</code> accept <code>metadata</code> and a column
+name, such as <code>group = &quot;Environment&quot;</code>. In contrast,
+<code>pathway_errorbar()</code> has no metadata argument: its
+capitalized <code>Group</code> parameter requires one group label per
+abundance column, not a column name.</p>
+<p>The bundled metadata and abundance table have different sample
+orders. Name the group vector with sample IDs so that plotting aligns
+labels to the correct samples. For your own data, replace
+<code>sample_name</code> and <code>Environment</code> with your
+sample-ID and grouping columns. Do not pass an unnamed metadata column
+unless you have already verified its order against the abundance
+columns.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="fu">stopifnot</span>(</span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a>  <span class="sc">!</span><span class="fu">anyNA</span>(metadata<span class="sc">$</span>sample_name),</span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a>  <span class="sc">!</span><span class="fu">anyDuplicated</span>(metadata<span class="sc">$</span>sample_name),</span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a>  <span class="fu">setequal</span>(<span class="fu">colnames</span>(kegg_pathway_abundance), metadata<span class="sc">$</span>sample_name)</span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a>)</span>
+<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a>sample_groups <span class="ot">&lt;-</span> <span class="fu">setNames</span>(metadata<span class="sc">$</span>Environment, metadata<span class="sc">$</span>sample_name)</span></code></pre></div>
 </div>
 <div id="run-differential-abundance-analysis" class="section level3">
 <h3>Run differential abundance analysis</h3>
-<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a>daa_results <span class="ot">&lt;-</span> <span class="fu">pathway_daa</span>(</span>
-<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>  <span class="at">abundance =</span> kegg_pathway_abundance,</span>
-<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>  <span class="at">metadata =</span> metadata,</span>
-<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>  <span class="at">group =</span> <span class="st">&quot;Environment&quot;</span>,</span>
-<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>  <span class="at">daa_method =</span> <span class="st">&quot;ALDEx2&quot;</span></span>
-<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a>)</span>
-<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a></span>
-<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a><span class="fu">head</span>(daa_results)</span></code></pre></div>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a>daa_results <span class="ot">&lt;-</span> <span class="fu">pathway_daa</span>(</span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a>  <span class="at">abundance =</span> kegg_pathway_abundance,</span>
+<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a>  <span class="at">metadata =</span> metadata,</span>
+<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a>  <span class="at">group =</span> <span class="st">&quot;Environment&quot;</span>,</span>
+<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a>  <span class="at">daa_method =</span> <span class="st">&quot;LinDA&quot;</span></span>
+<span id="cb6-6"><a href="#cb6-6" tabindex="-1"></a>)</span>
+<span id="cb6-7"><a href="#cb6-7" tabindex="-1"></a></span>
+<span id="cb6-8"><a href="#cb6-8" tabindex="-1"></a><span class="fu">head</span>(daa_results)</span></code></pre></div>
 </div>
 <div id="annotate-pathway-results" class="section level3">
 <h3>Annotate pathway results</h3>
-<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a>annotated_daa <span class="ot">&lt;-</span> <span class="fu">pathway_annotation</span>(</span>
-<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a>  <span class="at">pathway =</span> <span class="st">&quot;KO&quot;</span>,</span>
-<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a>  <span class="at">daa_results_df =</span> daa_results,</span>
-<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a>  <span class="at">ko_to_kegg =</span> <span class="cn">TRUE</span></span>
-<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a>)</span>
-<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a></span>
-<span id="cb5-7"><a href="#cb5-7" tabindex="-1"></a><span class="fu">head</span>(annotated_daa)</span></code></pre></div>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a>annotated_daa <span class="ot">&lt;-</span> <span class="fu">pathway_annotation</span>(</span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a>  <span class="at">pathway =</span> <span class="st">&quot;KO&quot;</span>,</span>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a>  <span class="at">daa_results_df =</span> daa_results,</span>
+<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a>  <span class="at">ko_to_kegg =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a>  <span class="at">p_adjust_threshold =</span> alpha</span>
+<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a>)</span>
+<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a></span>
+<span id="cb7-8"><a href="#cb7-8" tabindex="-1"></a><span class="fu">head</span>(annotated_daa)</span></code></pre></div>
 </div>
 <div id="visualize-pathway-level-results" class="section level3">
 <h3>Visualize pathway-level results</h3>
-<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a><span class="fu">pathway_errorbar</span>(</span>
-<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a>  <span class="at">abundance =</span> kegg_pathway_abundance,</span>
-<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a>  <span class="at">daa_results_df =</span> annotated_daa,</span>
-<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a>  <span class="at">Group =</span> <span class="st">&quot;Environment&quot;</span></span>
-<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a>)</span></code></pre></div>
-<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a>sig_pathways <span class="ot">&lt;-</span> annotated_daa<span class="sc">$</span>feature[annotated_daa<span class="sc">$</span>p_adjust <span class="sc">&lt;</span> <span class="fl">0.05</span>]</span>
-<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a></span>
-<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">length</span>(sig_pathways) <span class="sc">&gt;</span> <span class="dv">0</span>) {</span>
-<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a>  <span class="fu">pathway_heatmap</span>(</span>
-<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a>    <span class="at">abundance =</span> kegg_pathway_abundance[sig_pathways, , <span class="at">drop =</span> <span class="cn">FALSE</span>],</span>
-<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a>    <span class="at">metadata =</span> metadata,</span>
-<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a>    <span class="at">group =</span> <span class="st">&quot;Environment&quot;</span></span>
-<span id="cb7-8"><a href="#cb7-8" tabindex="-1"></a>  )</span>
-<span id="cb7-9"><a href="#cb7-9" tabindex="-1"></a>}</span>
-<span id="cb7-10"><a href="#cb7-10" tabindex="-1"></a></span>
-<span id="cb7-11"><a href="#cb7-11" tabindex="-1"></a><span class="fu">pathway_pca</span>(</span>
-<span id="cb7-12"><a href="#cb7-12" tabindex="-1"></a>  <span class="at">abundance =</span> kegg_pathway_abundance,</span>
-<span id="cb7-13"><a href="#cb7-13" tabindex="-1"></a>  <span class="at">metadata =</span> metadata,</span>
-<span id="cb7-14"><a href="#cb7-14" tabindex="-1"></a>  <span class="at">group =</span> <span class="st">&quot;Environment&quot;</span></span>
-<span id="cb7-15"><a href="#cb7-15" tabindex="-1"></a>)</span></code></pre></div>
+<p><code>ko_to_kegg = TRUE</code> is required here too: the rows are
+KEGG pathways and use <code>pathway_name</code> annotations. This flag
+does not reconvert the abundance matrix in the plotting function.</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a>sig_pathways <span class="ot">&lt;-</span> <span class="fu">unique</span>(annotated_daa<span class="sc">$</span>feature[</span>
+<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a>  <span class="sc">!</span><span class="fu">is.na</span>(annotated_daa<span class="sc">$</span>p_adjust) <span class="sc">&amp;</span> annotated_daa<span class="sc">$</span>p_adjust <span class="sc">&lt;</span> alpha</span>
+<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a>])</span>
+<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a></span>
+<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a>p <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
+<span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">length</span>(sig_pathways) <span class="sc">&gt;</span> <span class="dv">0</span>) {</span>
+<span id="cb8-7"><a href="#cb8-7" tabindex="-1"></a>  p <span class="ot">&lt;-</span> <span class="fu">pathway_errorbar</span>(</span>
+<span id="cb8-8"><a href="#cb8-8" tabindex="-1"></a>    <span class="at">abundance =</span> kegg_pathway_abundance,</span>
+<span id="cb8-9"><a href="#cb8-9" tabindex="-1"></a>    <span class="at">daa_results_df =</span> annotated_daa,</span>
+<span id="cb8-10"><a href="#cb8-10" tabindex="-1"></a>    <span class="at">Group =</span> sample_groups,</span>
+<span id="cb8-11"><a href="#cb8-11" tabindex="-1"></a>    <span class="at">ko_to_kegg =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb8-12"><a href="#cb8-12" tabindex="-1"></a>    <span class="at">p_values_threshold =</span> alpha,</span>
+<span id="cb8-13"><a href="#cb8-13" tabindex="-1"></a>    <span class="at">order =</span> <span class="st">&quot;pathway_class&quot;</span>,</span>
+<span id="cb8-14"><a href="#cb8-14" tabindex="-1"></a>    <span class="at">x_lab =</span> <span class="st">&quot;pathway_name&quot;</span></span>
+<span id="cb8-15"><a href="#cb8-15" tabindex="-1"></a>  )</span>
+<span id="cb8-16"><a href="#cb8-16" tabindex="-1"></a>} <span class="cf">else</span> {</span>
+<span id="cb8-17"><a href="#cb8-17" tabindex="-1"></a>  <span class="fu">message</span>(<span class="st">&quot;No pathways pass the adjusted p-value threshold; skipping the error bar plot.&quot;</span>)</span>
+<span id="cb8-18"><a href="#cb8-18" tabindex="-1"></a>}</span>
+<span id="cb8-19"><a href="#cb8-19" tabindex="-1"></a>p</span></code></pre></div>
+<p>No significant pathways is a valid analysis outcome. Keep the results
+table; do not increase the threshold or change methods just to produce a
+plot. Missing KEGG annotations can also prevent plotting even when
+significant results exist; check the annotation warnings separately.</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">length</span>(sig_pathways) <span class="sc">&gt;</span> <span class="dv">0</span>) {</span>
+<span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a>  <span class="fu">pathway_heatmap</span>(</span>
+<span id="cb9-3"><a href="#cb9-3" tabindex="-1"></a>    <span class="at">abundance =</span> kegg_pathway_abundance[sig_pathways, , <span class="at">drop =</span> <span class="cn">FALSE</span>],</span>
+<span id="cb9-4"><a href="#cb9-4" tabindex="-1"></a>    <span class="at">metadata =</span> metadata,</span>
+<span id="cb9-5"><a href="#cb9-5" tabindex="-1"></a>    <span class="at">group =</span> <span class="st">&quot;Environment&quot;</span></span>
+<span id="cb9-6"><a href="#cb9-6" tabindex="-1"></a>  )</span>
+<span id="cb9-7"><a href="#cb9-7" tabindex="-1"></a>}</span>
+<span id="cb9-8"><a href="#cb9-8" tabindex="-1"></a></span>
+<span id="cb9-9"><a href="#cb9-9" tabindex="-1"></a><span class="fu">pathway_pca</span>(</span>
+<span id="cb9-10"><a href="#cb9-10" tabindex="-1"></a>  <span class="at">abundance =</span> kegg_pathway_abundance,</span>
+<span id="cb9-11"><a href="#cb9-11" tabindex="-1"></a>  <span class="at">metadata =</span> metadata,</span>
+<span id="cb9-12"><a href="#cb9-12" tabindex="-1"></a>  <span class="at">group =</span> <span class="st">&quot;Environment&quot;</span></span>
+<span id="cb9-13"><a href="#cb9-13" tabindex="-1"></a>)</span></code></pre></div>
+</div>
+<div id="using-aldex2-instead" class="section level3">
+<h3>Using ALDEx2 instead</h3>
+<p>ALDEx2 is an optional Bioconductor dependency. For two groups it
+returns both Welch and Wilcoxon results, so select one test before
+annotation and plotting. Otherwise a pathway can occur twice with
+different p-values. Specify the test in advance. ALDEx2 uses Monte Carlo
+sampling, so set a seed for reproducibility; results can still differ
+across package versions.</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a><span class="co"># Install once with BiocManager::install(&quot;ALDEx2&quot;).</span></span>
+<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">207</span>)</span>
+<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a>aldex_results <span class="ot">&lt;-</span> <span class="fu">pathway_daa</span>(</span>
+<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a>  <span class="at">abundance =</span> kegg_pathway_abundance,</span>
+<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a>  <span class="at">metadata =</span> metadata,</span>
+<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a>  <span class="at">group =</span> <span class="st">&quot;Environment&quot;</span>,</span>
+<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a>  <span class="at">daa_method =</span> <span class="st">&quot;ALDEx2&quot;</span></span>
+<span id="cb10-8"><a href="#cb10-8" tabindex="-1"></a>)</span>
+<span id="cb10-9"><a href="#cb10-9" tabindex="-1"></a>daa_results <span class="ot">&lt;-</span> aldex_results[</span>
+<span id="cb10-10"><a href="#cb10-10" tabindex="-1"></a>  aldex_results<span class="sc">$</span>method <span class="sc">==</span> <span class="st">&quot;ALDEx2_Welch&#39;s t test&quot;</span>, , drop <span class="ot">=</span> <span class="cn">FALSE</span></span>
+<span id="cb10-11"><a href="#cb10-11" tabindex="-1"></a>]</span></code></pre></div>
+<p>Then rerun the annotation and visualization steps with this
+<code>daa_results</code>. For more than two groups or multiple
+contrasts, inspect <code>method</code>, <code>group1</code>, and
+<code>group2</code> and select the supported test/contrast explicitly.
+An ALDEx2 run can have no adjusted p-values below 0.05 even when LinDA
+finds some; these are different statistical procedures, not equivalent
+plotting modes.</p>
 </div>
 </div>
 <div id="taxa-contribution-workflow" class="section level2">
 <h2>Taxa contribution workflow</h2>
-<p>PICRUSt2 can output contribution files that explain which taxa are
-driving predicted functional shifts. <code>ggpicrust2</code> supports
-both gene-family-level and pathway-level contribution workflows.</p>
-<div id="read-picrust2-contribution-files" class="section level3">
-<h3>Read PICRUSt2 contribution files</h3>
-<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a><span class="co"># For pred_metagenome_contrib.tsv</span></span>
-<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a>contrib_data <span class="ot">&lt;-</span> <span class="fu">read_contrib_file</span>(<span class="st">&quot;pred_metagenome_contrib.tsv&quot;</span>)</span>
-<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a></span>
-<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a><span class="co"># For path_abun_contrib.tsv.gz; PICRUSt2 pathway output commonly uses MetaCyc IDs.</span></span>
-<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a>path_contrib_data <span class="ot">&lt;-</span> <span class="fu">read_pathway_contrib_file</span>(<span class="st">&quot;path_abun_contrib.tsv.gz&quot;</span>)</span>
-<span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a></span>
-<span id="cb8-7"><a href="#cb8-7" tabindex="-1"></a><span class="co"># For pred_metagenome_strat.tsv</span></span>
-<span id="cb8-8"><a href="#cb8-8" tabindex="-1"></a>strat_data <span class="ot">&lt;-</span> <span class="fu">read_strat_file</span>(<span class="st">&quot;pred_metagenome_strat.tsv&quot;</span>)</span></code></pre></div>
-</div>
-<div id="aggregate-to-a-taxonomic-level" class="section level3">
-<h3>Aggregate to a taxonomic level</h3>
-<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a>taxa_contrib <span class="ot">&lt;-</span> <span class="fu">aggregate_taxa_contributions</span>(</span>
-<span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a>  <span class="at">contrib_data =</span> contrib_data,</span>
-<span id="cb9-3"><a href="#cb9-3" tabindex="-1"></a>  <span class="at">taxonomy =</span> your_taxonomy_table,</span>
-<span id="cb9-4"><a href="#cb9-4" tabindex="-1"></a>  <span class="at">tax_level =</span> <span class="st">&quot;Genus&quot;</span>,</span>
-<span id="cb9-5"><a href="#cb9-5" tabindex="-1"></a>  <span class="at">top_n =</span> <span class="dv">10</span>,</span>
-<span id="cb9-6"><a href="#cb9-6" tabindex="-1"></a>  <span class="at">daa_results_df =</span> daa_results</span>
-<span id="cb9-7"><a href="#cb9-7" tabindex="-1"></a>)</span>
-<span id="cb9-8"><a href="#cb9-8" tabindex="-1"></a></span>
-<span id="cb9-9"><a href="#cb9-9" tabindex="-1"></a><span class="fu">head</span>(taxa_contrib)</span></code></pre></div>
-<p><code>aggregate_taxa_contributions()</code> accepts either:</p>
-<ul>
-<li>normalized contribution data from
-<code>read_contrib_file()</code></li>
-<li>pathway-level contribution data from
-<code>read_pathway_contrib_file()</code></li>
-<li>stratified abundance data from <code>read_strat_file()</code></li>
-</ul>
-<p>Use <code>daa_results_df</code> or <code>pathway_ids</code> when you
-want to focus only on pathways that were significant in your
-pathway-level analysis.</p>
-<p>When you already have pathway-level contribution data and do not want
-to run differential abundance analysis, omit <code>daa_results_df</code>
-and aggregate directly. For PICRUSt2 pathway contribution output, use
-matching MetaCyc annotations rather than KEGG pathway annotations.</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a>path_taxa_contrib <span class="ot">&lt;-</span> <span class="fu">aggregate_taxa_contributions</span>(</span>
-<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a>  <span class="at">contrib_data =</span> path_contrib_data,</span>
-<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a>  <span class="at">taxonomy =</span> your_taxonomy_table,</span>
-<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a>  <span class="at">tax_level =</span> <span class="st">&quot;Genus&quot;</span>,</span>
-<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a>  <span class="at">top_n =</span> <span class="dv">10</span></span>
-<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a>)</span>
-<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a></span>
-<span id="cb10-8"><a href="#cb10-8" tabindex="-1"></a>pathway_annotation_df <span class="ot">&lt;-</span> <span class="fu">pathway_annotation</span>(</span>
-<span id="cb10-9"><a href="#cb10-9" tabindex="-1"></a>  <span class="at">data =</span> <span class="fu">data.frame</span>(<span class="at">function_id =</span> <span class="fu">unique</span>(path_taxa_contrib<span class="sc">$</span>function_id)),</span>
-<span id="cb10-10"><a href="#cb10-10" tabindex="-1"></a>  <span class="at">pathway =</span> <span class="st">&quot;MetaCyc&quot;</span></span>
-<span id="cb10-11"><a href="#cb10-11" tabindex="-1"></a>)</span></code></pre></div>
-</div>
-<div id="visualize-taxa-level-drivers" class="section level3">
-<h3>Visualize taxa-level drivers</h3>
-<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a><span class="fu">taxa_contribution_bar</span>(</span>
-<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a>  <span class="at">contrib_agg =</span> taxa_contrib,</span>
-<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a>  <span class="at">metadata =</span> metadata,</span>
-<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a>  <span class="at">group =</span> <span class="st">&quot;Environment&quot;</span>,</span>
-<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a>  <span class="at">facet_by =</span> <span class="st">&quot;function&quot;</span></span>
+<p>PICRUSt2 contribution files attribute predicted functional abundance
+to taxa. <code>ggpicrust2</code> supports both gene-family-level and
+pathway-level contribution workflows.</p>
+<div id="run-a-synthetic-contribution-example" class="section level3">
+<h3>Run a synthetic contribution example</h3>
+<p>This small example illustrates input schemas and aggregation. It is
+not a biological result, and its sample IDs are separate from the
+bundled KO dataset.</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a>contrib_input <span class="ot">&lt;-</span> <span class="fu">expand.grid</span>(</span>
+<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a>  <span class="at">sample =</span> <span class="fu">paste0</span>(<span class="st">&quot;S&quot;</span>, <span class="dv">1</span><span class="sc">:</span><span class="dv">4</span>),</span>
+<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a>  <span class="at">function_id =</span> <span class="fu">c</span>(<span class="st">&quot;K00001&quot;</span>, <span class="st">&quot;K00002&quot;</span>),</span>
+<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a>  <span class="at">taxon =</span> <span class="fu">c</span>(<span class="st">&quot;ASV1&quot;</span>, <span class="st">&quot;ASV2&quot;</span>),</span>
+<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a>  <span class="at">stringsAsFactors =</span> <span class="cn">FALSE</span></span>
 <span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a>)</span>
-<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a></span>
-<span id="cb11-8"><a href="#cb11-8" tabindex="-1"></a><span class="fu">taxa_contribution_heatmap</span>(</span>
-<span id="cb11-9"><a href="#cb11-9" tabindex="-1"></a>  <span class="at">contrib_agg =</span> taxa_contrib,</span>
-<span id="cb11-10"><a href="#cb11-10" tabindex="-1"></a>  <span class="at">n_functions =</span> <span class="dv">20</span></span>
-<span id="cb11-11"><a href="#cb11-11" tabindex="-1"></a>)</span></code></pre></div>
-<p>This step is useful when pathway-level significance is not enough and
-you need to identify which taxa are contributing to the change.</p>
+<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a>contrib_input<span class="sc">$</span>taxon_function_abun <span class="ot">&lt;-</span> <span class="fu">seq_len</span>(<span class="fu">nrow</span>(contrib_input))</span>
+<span id="cb11-8"><a href="#cb11-8" tabindex="-1"></a>contrib_data <span class="ot">&lt;-</span> <span class="fu">read_contrib_file</span>(<span class="at">data =</span> contrib_input)</span>
+<span id="cb11-9"><a href="#cb11-9" tabindex="-1"></a>contrib_metadata <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb11-10"><a href="#cb11-10" tabindex="-1"></a>  <span class="at">sample_name =</span> <span class="fu">paste0</span>(<span class="st">&quot;S&quot;</span>, <span class="dv">1</span><span class="sc">:</span><span class="dv">4</span>),</span>
+<span id="cb11-11"><a href="#cb11-11" tabindex="-1"></a>  <span class="at">Environment =</span> <span class="fu">rep</span>(<span class="fu">c</span>(<span class="st">&quot;Control&quot;</span>, <span class="st">&quot;Treatment&quot;</span>), <span class="at">each =</span> <span class="dv">2</span>)</span>
+<span id="cb11-12"><a href="#cb11-12" tabindex="-1"></a>)</span>
+<span id="cb11-13"><a href="#cb11-13" tabindex="-1"></a>taxonomy <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb11-14"><a href="#cb11-14" tabindex="-1"></a>  <span class="at">ASV =</span> <span class="fu">c</span>(<span class="st">&quot;ASV1&quot;</span>, <span class="st">&quot;ASV2&quot;</span>),</span>
+<span id="cb11-15"><a href="#cb11-15" tabindex="-1"></a>  <span class="at">Genus =</span> <span class="fu">c</span>(<span class="st">&quot;ExampleGenusA&quot;</span>, <span class="st">&quot;ExampleGenusB&quot;</span>)</span>
+<span id="cb11-16"><a href="#cb11-16" tabindex="-1"></a>)</span>
+<span id="cb11-17"><a href="#cb11-17" tabindex="-1"></a>taxa_contrib <span class="ot">&lt;-</span> <span class="fu">aggregate_taxa_contributions</span>(</span>
+<span id="cb11-18"><a href="#cb11-18" tabindex="-1"></a>  contrib_data, <span class="at">taxonomy =</span> taxonomy, <span class="at">tax_level =</span> <span class="st">&quot;Genus&quot;</span>, <span class="at">top_n =</span> <span class="dv">2</span></span>
+<span id="cb11-19"><a href="#cb11-19" tabindex="-1"></a>)</span>
+<span id="cb11-20"><a href="#cb11-20" tabindex="-1"></a><span class="fu">head</span>(taxa_contrib)</span></code></pre></div>
+<p>The aggregation sums the selected contribution column. By default it
+prefers <code>norm_taxon_function_contrib</code> when supplied; this
+example supplies raw <code>taxon_function_abun</code> only. A percentage
+bar subsequently normalizes within each sample/function, so its heights
+describe the taxonomic composition of that function, not a
+between-function abundance comparison.</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a><span class="fu">taxa_contribution_bar</span>(</span>
+<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a>  <span class="at">contrib_agg =</span> taxa_contrib,</span>
+<span id="cb12-3"><a href="#cb12-3" tabindex="-1"></a>  <span class="at">metadata =</span> contrib_metadata,</span>
+<span id="cb12-4"><a href="#cb12-4" tabindex="-1"></a>  <span class="at">group =</span> <span class="st">&quot;Environment&quot;</span>,</span>
+<span id="cb12-5"><a href="#cb12-5" tabindex="-1"></a>  <span class="at">facet_by =</span> <span class="st">&quot;function&quot;</span></span>
+<span id="cb12-6"><a href="#cb12-6" tabindex="-1"></a>)</span>
+<span id="cb12-7"><a href="#cb12-7" tabindex="-1"></a><span class="fu">taxa_contribution_heatmap</span>(<span class="at">contrib_agg =</span> taxa_contrib, <span class="at">n_functions =</span> <span class="dv">2</span>)</span></code></pre></div>
+</div>
+<div id="read-your-own-picrust2-files" class="section level3">
+<h3>Read your own PICRUSt2 files</h3>
+<p>For real data, replace the synthetic input with one of the readers
+below and use metadata and taxonomy for those same samples and taxa:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" tabindex="-1"></a><span class="co"># KO/gene-family contributions:</span></span>
+<span id="cb13-2"><a href="#cb13-2" tabindex="-1"></a><span class="co"># contrib_data &lt;- read_contrib_file(&quot;pred_metagenome_contrib.tsv&quot;)</span></span>
+<span id="cb13-3"><a href="#cb13-3" tabindex="-1"></a><span class="co"># Pathway contributions (often MetaCyc):</span></span>
+<span id="cb13-4"><a href="#cb13-4" tabindex="-1"></a><span class="co"># contrib_data &lt;- read_pathway_contrib_file(&quot;path_abun_contrib.tsv.gz&quot;)</span></span>
+<span id="cb13-5"><a href="#cb13-5" tabindex="-1"></a><span class="co"># Wide stratified abundance:</span></span>
+<span id="cb13-6"><a href="#cb13-6" tabindex="-1"></a><span class="co"># contrib_data &lt;- read_strat_file(&quot;pred_metagenome_strat.tsv&quot;)</span></span></code></pre></div>
+<p>When optional <code>daa_results_df</code> or <code>pathway_ids</code>
+filters contain KEGG pathway IDs and the contribution table is KO-level,
+the function expands those pathway IDs to KO members and retains
+matching KO rows. It does not turn KO contributions into pathway
+contributions. The output <code>function_id</code> remains a KO
+identifier. For pathway-level MetaCyc contributions, matching MetaCyc
+IDs are filtered directly. Do not interpret a member-KO filter as
+independent evidence that a taxon drives a reconstructed pathway’s
+activity.</p>
+<p>For pathway-level data, use matching pathway annotations. For
+example:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a>path_input <span class="ot">&lt;-</span> contrib_input</span>
+<span id="cb14-2"><a href="#cb14-2" tabindex="-1"></a>path_input<span class="sc">$</span>function_id <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(path_input<span class="sc">$</span>function_id <span class="sc">==</span> <span class="st">&quot;K00001&quot;</span>,</span>
+<span id="cb14-3"><a href="#cb14-3" tabindex="-1"></a>                                  <span class="st">&quot;GLYCOLYSIS&quot;</span>, <span class="st">&quot;PWY-5484&quot;</span>)</span>
+<span id="cb14-4"><a href="#cb14-4" tabindex="-1"></a>path_data <span class="ot">&lt;-</span> <span class="fu">read_pathway_contrib_file</span>(<span class="at">data =</span> path_input)</span>
+<span id="cb14-5"><a href="#cb14-5" tabindex="-1"></a>path_taxa_contrib <span class="ot">&lt;-</span> <span class="fu">aggregate_taxa_contributions</span>(</span>
+<span id="cb14-6"><a href="#cb14-6" tabindex="-1"></a>  path_data, <span class="at">taxonomy =</span> taxonomy, <span class="at">tax_level =</span> <span class="st">&quot;Genus&quot;</span>, <span class="at">top_n =</span> <span class="dv">2</span></span>
+<span id="cb14-7"><a href="#cb14-7" tabindex="-1"></a>)</span>
+<span id="cb14-8"><a href="#cb14-8" tabindex="-1"></a>pathway_annotation_df <span class="ot">&lt;-</span> <span class="fu">pathway_annotation</span>(</span>
+<span id="cb14-9"><a href="#cb14-9" tabindex="-1"></a>  <span class="at">data =</span> <span class="fu">data.frame</span>(<span class="at">function_id =</span> <span class="fu">unique</span>(path_taxa_contrib<span class="sc">$</span>function_id)),</span>
+<span id="cb14-10"><a href="#cb14-10" tabindex="-1"></a>  <span class="at">pathway =</span> <span class="st">&quot;MetaCyc&quot;</span></span>
+<span id="cb14-11"><a href="#cb14-11" tabindex="-1"></a>)</span></code></pre></div>
 </div>
 </div>
 <div id="gsea-workflow" class="section level2">
 <h2>GSEA workflow</h2>
 <p>Use GSEA when you want pathway-set level inference from KO or EC
 abundance rather than testing each pathway independently.</p>
-<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a>gsea_results <span class="ot">&lt;-</span> <span class="fu">pathway_gsea</span>(</span>
-<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a>  <span class="at">abundance =</span> ko_abundance <span class="sc">%&gt;%</span> <span class="fu">column_to_rownames</span>(<span class="st">&quot;#NAME&quot;</span>),</span>
-<span id="cb12-3"><a href="#cb12-3" tabindex="-1"></a>  <span class="at">metadata =</span> metadata,</span>
-<span id="cb12-4"><a href="#cb12-4" tabindex="-1"></a>  <span class="at">group =</span> <span class="st">&quot;Environment&quot;</span>,</span>
-<span id="cb12-5"><a href="#cb12-5" tabindex="-1"></a>  <span class="at">pathway_type =</span> <span class="st">&quot;KEGG&quot;</span>,</span>
-<span id="cb12-6"><a href="#cb12-6" tabindex="-1"></a>  <span class="at">method =</span> <span class="st">&quot;camera&quot;</span></span>
-<span id="cb12-7"><a href="#cb12-7" tabindex="-1"></a>)</span>
-<span id="cb12-8"><a href="#cb12-8" tabindex="-1"></a></span>
-<span id="cb12-9"><a href="#cb12-9" tabindex="-1"></a>annotated_gsea <span class="ot">&lt;-</span> <span class="fu">gsea_pathway_annotation</span>(</span>
-<span id="cb12-10"><a href="#cb12-10" tabindex="-1"></a>  <span class="at">gsea_results =</span> gsea_results,</span>
-<span id="cb12-11"><a href="#cb12-11" tabindex="-1"></a>  <span class="at">pathway_type =</span> <span class="st">&quot;KEGG&quot;</span></span>
-<span id="cb12-12"><a href="#cb12-12" tabindex="-1"></a>)</span>
-<span id="cb12-13"><a href="#cb12-13" tabindex="-1"></a></span>
-<span id="cb12-14"><a href="#cb12-14" tabindex="-1"></a><span class="fu">visualize_gsea</span>(</span>
-<span id="cb12-15"><a href="#cb12-15" tabindex="-1"></a>  <span class="at">gsea_results =</span> annotated_gsea,</span>
-<span id="cb12-16"><a href="#cb12-16" tabindex="-1"></a>  <span class="at">plot_type =</span> <span class="st">&quot;barplot&quot;</span>,</span>
-<span id="cb12-17"><a href="#cb12-17" tabindex="-1"></a>  <span class="at">n_pathways =</span> <span class="dv">15</span></span>
-<span id="cb12-18"><a href="#cb12-18" tabindex="-1"></a>)</span></code></pre></div>
+<div class="sourceCode" id="cb15"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" tabindex="-1"></a>gsea_results <span class="ot">&lt;-</span> <span class="fu">pathway_gsea</span>(</span>
+<span id="cb15-2"><a href="#cb15-2" tabindex="-1"></a>  <span class="at">abundance =</span> ko_abundance <span class="sc">%&gt;%</span> <span class="fu">column_to_rownames</span>(<span class="st">&quot;#NAME&quot;</span>),</span>
+<span id="cb15-3"><a href="#cb15-3" tabindex="-1"></a>  <span class="at">metadata =</span> metadata,</span>
+<span id="cb15-4"><a href="#cb15-4" tabindex="-1"></a>  <span class="at">group =</span> <span class="st">&quot;Environment&quot;</span>,</span>
+<span id="cb15-5"><a href="#cb15-5" tabindex="-1"></a>  <span class="at">pathway_type =</span> <span class="st">&quot;KEGG&quot;</span>,</span>
+<span id="cb15-6"><a href="#cb15-6" tabindex="-1"></a>  <span class="at">method =</span> <span class="st">&quot;camera&quot;</span></span>
+<span id="cb15-7"><a href="#cb15-7" tabindex="-1"></a>)</span>
+<span id="cb15-8"><a href="#cb15-8" tabindex="-1"></a></span>
+<span id="cb15-9"><a href="#cb15-9" tabindex="-1"></a>annotated_gsea <span class="ot">&lt;-</span> <span class="fu">gsea_pathway_annotation</span>(</span>
+<span id="cb15-10"><a href="#cb15-10" tabindex="-1"></a>  <span class="at">gsea_results =</span> gsea_results,</span>
+<span id="cb15-11"><a href="#cb15-11" tabindex="-1"></a>  <span class="at">pathway_type =</span> <span class="st">&quot;KEGG&quot;</span></span>
+<span id="cb15-12"><a href="#cb15-12" tabindex="-1"></a>)</span>
+<span id="cb15-13"><a href="#cb15-13" tabindex="-1"></a></span>
+<span id="cb15-14"><a href="#cb15-14" tabindex="-1"></a><span class="fu">visualize_gsea</span>(</span>
+<span id="cb15-15"><a href="#cb15-15" tabindex="-1"></a>  <span class="at">gsea_results =</span> annotated_gsea,</span>
+<span id="cb15-16"><a href="#cb15-16" tabindex="-1"></a>  <span class="at">plot_type =</span> <span class="st">&quot;barplot&quot;</span>,</span>
+<span id="cb15-17"><a href="#cb15-17" tabindex="-1"></a>  <span class="at">n_pathways =</span> <span class="dv">15</span></span>
+<span id="cb15-18"><a href="#cb15-18" tabindex="-1"></a>)</span></code></pre></div>
 <p>For a method-by-method GSEA explanation, covariate adjustment, and
 comparison with DAA, see the <code>gsea_analysis</code> vignette.</p>
 </div>
